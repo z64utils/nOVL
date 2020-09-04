@@ -1,0 +1,133 @@
+.TH "nOVL" "1" "2009-07-07" "Marshall B. Rogers" "N64 development tools"
+.SH "NAME"
+.LP 
+\fBnOVL\fR \-\- Interact with Nintendo\*R overlay files
+.SH "SYNOPSIS"
+.LP 
+nOVL [\-clrDd] [\-hv] [\-A \fIaddress\fP] [\-o \fIoutput\fP] [\fIFILE\fP]...
+.SH "DESCRIPTION"
+.LP 
+nOVL is a utility to interact with and create overlay files (relocatable binaries) used in Nintendo 64 video games. Features include: disassembly, information listing (sections, relocations), and conversion from an ELF file to an overlay file.
+.LP
+The action it performs is taken from one of the -clrDd options. For all operating modes except conversion (-c), you may specify multiple files on the command line.
+.LP 
+Status messages are written to stderr, whereas output of commands requesting information (disassemble, information listing) is written to stdout. 
+
+.SH "OPERATING MODES"
+.LP 
+
+.TP 
+\fB\-c\fR: Convert
+This mode converts a MIPS ELF binary to an overlay file. In order for this to work, you need to pass --emit-relocs to `ld` in order to have relocation entries embedded. Options \fB\-A\fR and \fB\-o\fR modify the output.
+
+.TP 
+\fB\-l\fR: List sections
+This mode simply lists the sections, their addresses, and their sizes. Option \fB\-A\fR modifies the output.
+
+.TP 
+\fB\-r\fR: List relocations
+This mode will load the relocation entries from the overlay and display them. It displays the address, section, type (represented as string), and current value of the relocation entry. Option \fB\-A\fR modifies the output.
+
+.TP 
+\fB\-d\fR: Disassemble
+Disassemble the executable section of the overlay. Options \fB\-A\fR and \fB\-v\fR modify the output.
+
+.TP 
+\fB\-D\fR: Disassemble all
+Disassemble every section of the overlay. Options \fB\-A\fR and \fB\-v\fR modify the output.
+
+.SH "OPTIONS"
+.LP 
+
+.TP 
+\fB\-A\fR \fIaddress\fP
+Set the base address (entry point) of the overlay file. In dissasembly & listing modes, this address is added to addresses in the overlay file. In the conversion mode, this is the address to translate the binary to.
+
+.TP 
+\fB\-g\fR
+Disable ANSI colors codes in status messages.
+
+.TP 
+\fB\-h\fR
+Display (where applicable) human readable values as opposed to just numbers. For example, 
+"49152" would become "48k".
+
+.TP 
+\fB\-o\fR \fIfilename\fP
+Sets the output overlay file when converting from an ELF file.
+
+.TP 
+\fB\-s\fR
+Silent mode. Do not output anything.
+
+.TP 
+\fB\-v\fR
+Adjust verbosity of output. It goes from: messages, debug, debug 2 (relocations -- can get hefty). The default is to just display notices.
+
+.TP 
+\fB\-V\fR
+During disassembly, display also the raw instruction next to the address and the disassembly.
+
+
+.SH "RETURN VALUE"
+.LP
+nOVL will return non-zero on failure, and zero on success. You can use it with a simple operation mode to verify that an overlay file is valid.
+
+
+.SH "EXAMPLES"
+.LP 
+Listing the sections in an overlay, and setting the base address to 0x80800000:
+.br 
+$ nOVL -lh -A 0x80800000 binary.ovl
+
+.LP 
+Listing the relocations in an overlay, and setting the base address to 0x80800000:
+.br 
+$ nOVL -r -A 0x80800000 binary.ovl
+
+.LP 
+Disassembling the executable section:
+.br 
+$ nOVL -d -A 0x80800000 binary.ovl
+
+.LP 
+Converting an ELF file to an overlay file that runs at 0x80800000:
+.br
+$ nOVL -c -A 0x80800000 -o output.ovl program.elf
+
+
+.SH "OVERLAY FILES"
+.LP
+The overlay files themselves are just bare binaries with relocation information intact. They have no information regarding their entry point - that is predetermined. They are split up much like modern ELF binaries, with their sections being:
+.br
+\fB\ .text\fR Machine code
+.br
+\fB\ .data\fR Initialized r/w data
+.br
+\fB\ .rodata\fR Initialized read-only data (strings, for example)
+.br
+\fB\ .bss\fR The section where variables initialized to zero are placed
+
+.LP
+After the section data comes the overlay header, which is comprised of all of the section sizes (4-bytes each), and a count (also 4-bytes) of how many relocations follow. The last word in the overlay file points (backwards from the end) to the start of the header.
+
+.LP
+The relocation values are comprised of the following:
+.br
+\fB\ 1)\fR ID of section (1 = .text)
+.br
+\fB\ 2)\fR relocation type (see elf.h)
+.br
+\fB\ 3)\fR section relative address to data
+
+.LP
+Every section in the overlay file, as well as the file itself must be aligned to 16-bytes.
+
+
+.SH "AUTHORS"
+.LP 
+Marshall B. Rogers (mbr@64.vg)
+.br 
+http://vg64tools.googlecode.com/
+.br 
+http://64.vg/

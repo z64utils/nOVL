@@ -1,0 +1,14 @@
+AC_INIT(src/novl.c)
+AM_INIT_AUTOMAKE(nOVL,1.0.1)
+AM_CONFIG_HEADER(config.h)
+
+PKG_CHECK_MODULES(DEPS, libelf >= 0.8.10 glib-2.0 >= 2.8.6)
+
+AC_SUBST(DEPS_CFLAGS)
+AC_SUBST(DEPS_LIBS)
+
+AC_PROG_CC
+AC_PROG_INSTALL
+
+AC_OUTPUT(Makefile src/Makefile doc/Makefile)
+
