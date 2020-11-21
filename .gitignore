@@ -1,0 +1,12 @@
+# Object files
+*.o
+*.obj
+*.elf
+
+# Executables
+*.exe
+
+# Text editor remnants
+*.swp
+.vscode/*
+.idea/*
