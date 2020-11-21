@@ -21,7 +21,11 @@
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
+#ifdef _WIN32 /* windows */
+#include <libelf.h>
+#else /* linux */
 #include <elf.h>
+#endif
 #include <libelf.h>
 #include <gelf.h>
 #include <sys/types.h>

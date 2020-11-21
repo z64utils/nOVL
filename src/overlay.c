@@ -22,7 +22,11 @@
 #include <string.h>
 #include <errno.h>
 #include <stdarg.h>
+#ifdef _WIN32 /* windows */
+#include <libelf.h>
+#else /* linux */
 #include <elf.h>
+#endif
 #include <glib.h>
 #include "overlay.h"
 

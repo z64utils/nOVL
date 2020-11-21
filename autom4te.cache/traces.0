@@ -120,6 +120,47 @@ AS_VAR_COPY([$1], [pkg_cv_][$1])
 
 AS_VAR_IF([$1], [""], [$5], [$4])dnl
 ])
+m4trace:/usr/share/aclocal/pkg.m4:285: -1- AC_DEFUN([PKG_WITH_MODULES], [
+m4_pushdef([with_arg], m4_tolower([$1]))
+
+m4_pushdef([description],
+           [m4_default([$5], [build with ]with_arg[ support])])
+
+m4_pushdef([def_arg], [m4_default([$6], [auto])])
+m4_pushdef([def_action_if_found], [AS_TR_SH([with_]with_arg)=yes])
+m4_pushdef([def_action_if_not_found], [AS_TR_SH([with_]with_arg)=no])
+
+m4_case(def_arg,
+            [yes],[m4_pushdef([with_without], [--without-]with_arg)],
+            [m4_pushdef([with_without],[--with-]with_arg)])
+
+AC_ARG_WITH(with_arg,
+     AS_HELP_STRING(with_without, description[ @<:@default=]def_arg[@:>@]),,
+    [AS_TR_SH([with_]with_arg)=def_arg])
+
+AS_CASE([$AS_TR_SH([with_]with_arg)],
+            [yes],[PKG_CHECK_MODULES([$1],[$2],$3,$4)],
+            [auto],[PKG_CHECK_MODULES([$1],[$2],
+                                        [m4_n([def_action_if_found]) $3],
+                                        [m4_n([def_action_if_not_found]) $4])])
+
+m4_popdef([with_arg])
+m4_popdef([description])
+m4_popdef([def_arg])
+
+])
+m4trace:/usr/share/aclocal/pkg.m4:322: -1- AC_DEFUN([PKG_HAVE_WITH_MODULES], [
+PKG_WITH_MODULES([$1],[$2],,,[$3],[$4])
+
+AM_CONDITIONAL([HAVE_][$1],
+               [test "$AS_TR_SH([with_]m4_tolower([$1]))" = "yes"])
+])
+m4trace:/usr/share/aclocal/pkg.m4:337: -1- AC_DEFUN([PKG_HAVE_DEFINE_WITH_MODULES], [
+PKG_HAVE_WITH_MODULES([$1],[$2],[$3],[$4])
+
+AS_IF([test "$AS_TR_SH([with_]m4_tolower([$1]))" = "yes"],
+        [AC_DEFINE([HAVE_][$1], 1, [Enable ]m4_tolower([$1])[ support])])
+])
 m4trace:/usr/share/aclocal-1.15/amversion.m4:14: -1- AC_DEFUN([AM_AUTOMAKE_VERSION], [am__api_version='1.15'
 dnl Some users find AM_AUTOMAKE_VERSION and mistake it for a way to
 dnl require some minimum version.  Point them to the right macro.
@@ -914,7 +955,6 @@ m4trace:configure.ac:1: -1- m4_pattern_allow([^datadir$])
 m4trace:configure.ac:1: -1- m4_pattern_allow([^sysconfdir$])
 m4trace:configure.ac:1: -1- m4_pattern_allow([^sharedstatedir$])
 m4trace:configure.ac:1: -1- m4_pattern_allow([^localstatedir$])
-m4trace:configure.ac:1: -1- m4_pattern_allow([^runstatedir$])
 m4trace:configure.ac:1: -1- m4_pattern_allow([^includedir$])
 m4trace:configure.ac:1: -1- m4_pattern_allow([^oldincludedir$])
 m4trace:configure.ac:1: -1- m4_pattern_allow([^docdir$])

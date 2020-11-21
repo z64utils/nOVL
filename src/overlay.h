@@ -20,7 +20,11 @@
 #ifndef __OVERLAY_H__
 #define __OVERLAY_H__
 
+#ifdef _WIN32 /* windows */
+#include <libelf.h>
+#else /* linux */
 #include <elf.h>
+#endif
 #include <stdint.h>
 
 
