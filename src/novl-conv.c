@@ -272,6 +272,55 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     
     bin_max = greatest + sizes[OVL_S_BSS];
     
+    /* predict size of resulting overlay (.bss starts after overlay in vram) */
+    elf_getshstrndx( elf, &sh_strcount );
+    section = NULL;
+    while( (section = elf_nextscn(elf, section)) )
+    {
+        int id;
+        
+        /* Get the header */
+        gelf_getshdr( section, &sh_header );
+        
+        /* Get name */
+        name = elf_strptr( elf, sh_strcount, sh_header.sh_name );
+        
+        /* Relocation header? */
+        if( strncmp(".rel.", name, 4) )
+            continue;
+        
+        /* Is this one we want? */
+        if( (id = valid_sec(name+4)) == -1 )
+        {
+            /* No */
+            continue;
+        }
+        
+        /* We want this */
+        DEBUG( "Counting relocation entries from '%s'.", name ) ;
+        
+        data = NULL;
+        
+        /* Get section data */
+        for( n = 0; n < sh_header.sh_size && (data = elf_getdata(section, data)); n += data->d_size )
+        {
+            /* Get relocations */
+            for( i = 0; gelf_getrel(data, i, &rel); i++ )
+                ninty_count += 1;
+        }
+    }
+    bin_max = elf_ep; /* entry point */
+    bin_max += sizes[OVL_S_TEXT]; /* section sizes */
+    bin_max += sizes[OVL_S_DATA];
+    bin_max += sizes[OVL_S_RODATA];
+    bin_max += 5 * sizeof(uint32_t); /* header size */
+    bin_max += ninty_count * sizeof(uint32_t); /* relocation block size */
+    bin_max += 4; /* space for footer */
+    if (bin_max & 15) /* 16 byte alignment */
+        bin_max += 16 - (bin_max & 15);
+    starts[OVL_S_BSS] = bin_max;
+    bin_max += sizes[OVL_S_BSS]; /* bin_max = end of overlay in vram */
+    
     /* Sections should've loaded now */
     #ifdef NOVL_DEBUG
      for( i = 0; i < OVL_S_COUNT; i++ )
@@ -291,6 +340,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     /* Step through section list once more */
     elf_getshstrndx( elf, &sh_strcount );
     section = NULL;
+    ninty_count = 0;
     while( (section = elf_nextscn(elf, section)) )
     {
         int id;
@@ -443,6 +493,22 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     tmp = g_htonl( backwards );
     v = fwrite( &tmp, 1, sizeof(tmp), ovl_out );
     MESG( "Finalized footer (%ib).", v );
+    
+    /* the size of the resulting overlay should be what
+     * we predicted to be the start of the .bss section
+     */
+    if (starts[OVL_S_BSS] != ftell(ovl_out) + elf_ep)
+    {
+        ERROR(
+            ".bss predicted incorrectly (got %08X, should be %08X)"
+            " (the algorithm needs work...)"
+            , starts[OVL_S_BSS]
+            , ftell(ovl_out) + elf_ep
+        );
+        fclose(ovl_out);
+        remove(out);
+        exit( EXIT_FAILURE );
+    }
     
     /* Write the data */
     fseek( ovl_out, 0, SEEK_SET );
