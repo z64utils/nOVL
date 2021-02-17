@@ -123,7 +123,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     greatest = 0;
     
     /* Open the ELF file for reading */
-    if( (elf_fd = open(in, O_RDONLY, 0)) < 0 )
+    if( (elf_fd = open(in, O_RDONLY | O_BINARY, 0)) < 0 )
     {
         ERROR( "open() failed: %s", strerror(errno) );
         exit( EXIT_FAILURE );
