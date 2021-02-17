@@ -200,7 +200,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     */
     
     /* Set up */
-    elf_getshstrndx( elf, &sh_strcount );
+    elf_getshdrstrndx( elf, &sh_strcount );
     section = NULL;
     
     /* Loop through sections; find loadable ones */
@@ -273,7 +273,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     bin_max = greatest + sizes[OVL_S_BSS];
     
     /* predict size of resulting overlay (.bss starts after overlay in vram) */
-    elf_getshstrndx( elf, &sh_strcount );
+    elf_getshdrstrndx( elf, &sh_strcount );
     section = NULL;
     while( (section = elf_nextscn(elf, section)) )
     {
@@ -338,7 +338,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     */
     
     /* Step through section list once more */
-    elf_getshstrndx( elf, &sh_strcount );
+    elf_getshdrstrndx( elf, &sh_strcount );
     section = NULL;
     ninty_count = 0;
     while( (section = elf_nextscn(elf, section)) )
