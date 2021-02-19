@@ -16,5 +16,6 @@ cp libelf/sys_elf.h.w32 libelf/sys_elf.h
 
 cp libelf/config.h.w32 libelf/config.h
 
-~/c/mxe/usr/bin/i686-w64-mingw32.static-gcc -o novl.exe -Wall -DNDEBUG -Os -s -flto -mconsole src/*.c `~/c/mxe/usr/bin/i686-w64-mingw32.static-pkg-config --cflags --libs glib-2.0` -Ilibelf -D__LIBELF_INTERNAL__=1 -DHAVE_MEMCPY=1 -DHAVE_MEMCMP=1 -DHAVE_MEMMOVE=1 -DSTDC_HEADERS=1 libelf/*.c
+/path/to/mxe/usr/bin/i686-w64-mingw32.static-gcc -o novl.exe -Wall -DNDEBUG -Os -s -flto -mconsole src/*.c `path/to/mxe/usr/bin/i686-w64-mingw32.static-pkg-config --cflags --libs glib-2.0` -Ilibelf -D__LIBELF_INTERNAL__=1 -DHAVE_MEMCPY=1 -DHAVE_MEMCMP=1 -DHAVE_MEMMOVE=1 -DSTDC_HEADERS=1 libelf/*.c
 ```
+/path/to/ should be the pach to your mxe folder.
