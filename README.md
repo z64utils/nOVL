@@ -6,7 +6,7 @@ make
 ### Cross-compiling for Win32
 First you need to build [`i686-w64-mingw32.static-gcc`](https://mxe.cc/). You only need `gcc` and `glib`, so run `make gcc glib` so you don't bloat your system.
 
-You're also going to need [`libelf`'s source code (0.8.13)](https://web.archive.org/web/20181111033959/http://www.mr511.de/software/english.html). Unzip it and move the `lib` folder to `nOVL`'s root directory. Rename `lib` to `libelf`. (`@AriaHiro64` maybe add this to the repo so the reader doesn't have to do this step)
+You're also going to need [`libelf`'s source code (0.8.13)](https://web.archive.org/web/20181111033959/http://www.mr511.de/software/english.html). Unzip it and move the `lib` folder to `nOVL`'s root directory. Rename `lib` to `libelf`. (`@AriaHiro64` added this to the repo so the reader doesn't have to do this step)
 
 Now run the following from `nOVL`'s root directory
 ```
