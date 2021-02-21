@@ -36,6 +36,9 @@
 #include "overlay.h"
 #include "mesg.h"
 
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
 
 /* This is an ugly hack! */
 uint32_t bin_min;

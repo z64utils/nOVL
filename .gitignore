@@ -5,6 +5,7 @@
 
 # Executables
 *.exe
+src/nOVL
 
 # Text editor remnants
 *.swp
