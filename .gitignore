@@ -11,8 +11,16 @@ src/nOVL
 *.swp
 .vscode/*
 .idea/*
-*.m4
 
 # Cache
 autom4te.cache/*
 src/.deps/*
+
+Makefile
+autom4te.cache/*
+config.h.in
+config.h.in~
+config.log
+src/.deps/*
+src/Makefile
+doc/Makefile
