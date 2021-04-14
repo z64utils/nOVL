@@ -1,93 +1,39 @@
-decoder.o: decoder.c /usr/include/stdc-predef.h decoder.h \
- /usr/include/stdio.h \
- /usr/include/x86_64-linux-gnu/bits/libc-header-start.h \
- /usr/include/features.h /usr/include/x86_64-linux-gnu/sys/cdefs.h \
- /usr/include/x86_64-linux-gnu/bits/wordsize.h \
- /usr/include/x86_64-linux-gnu/bits/long-double.h \
- /usr/include/x86_64-linux-gnu/gnu/stubs.h \
- /usr/include/x86_64-linux-gnu/gnu/stubs-64.h \
- /usr/lib/gcc/x86_64-linux-gnu/8/include/stddef.h \
- /usr/lib/gcc/x86_64-linux-gnu/8/include/stdarg.h \
- /usr/include/x86_64-linux-gnu/bits/types.h \
- /usr/include/x86_64-linux-gnu/bits/typesizes.h \
- /usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h \
- /usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h \
- /usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h \
- /usr/include/x86_64-linux-gnu/bits/types/__FILE.h \
- /usr/include/x86_64-linux-gnu/bits/types/FILE.h \
- /usr/include/x86_64-linux-gnu/bits/types/struct_FILE.h \
- /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
- /usr/include/x86_64-linux-gnu/bits/sys_errlist.h \
- /usr/include/x86_64-linux-gnu/bits/stdio.h /usr/include/string.h \
- /usr/include/x86_64-linux-gnu/bits/types/locale_t.h \
- /usr/include/x86_64-linux-gnu/bits/types/__locale_t.h \
- /usr/include/strings.h /usr/lib/gcc/x86_64-linux-gnu/8/include/stdint.h \
- /usr/include/stdint.h /usr/include/x86_64-linux-gnu/bits/wchar.h \
- /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
- /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h opprintf.h
-
-/usr/include/stdc-predef.h:
-
+decoder.o: decoder.c decoder.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/stdio.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/corecrt_stdio_config.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/corecrt.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/_mingw.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/_mingw_mac.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/_mingw_secapi.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/vadefs.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/sdks/_mingw_ddk.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/_mingw_off_t.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/swprintf.inl \
+ C:/msys64/mingw32/i686-w64-mingw32/include/sec_api/stdio_s.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/string.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/crtdefs.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/sec_api/string_s.h \
+ C:/msys64/mingw32/lib/gcc/i686-w64-mingw32/10.2.0/include/stdint.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/stdint.h \
+ C:/msys64/mingw32/lib/gcc/i686-w64-mingw32/10.2.0/include/stddef.h \
+ C:/msys64/mingw32/i686-w64-mingw32/include/stddef.h opprintf.h
 decoder.h:
-
-/usr/include/stdio.h:
-
-/usr/include/x86_64-linux-gnu/bits/libc-header-start.h:
-
-/usr/include/features.h:
-
-/usr/include/x86_64-linux-gnu/sys/cdefs.h:
-
-/usr/include/x86_64-linux-gnu/bits/wordsize.h:
-
-/usr/include/x86_64-linux-gnu/bits/long-double.h:
-
-/usr/include/x86_64-linux-gnu/gnu/stubs.h:
-
-/usr/include/x86_64-linux-gnu/gnu/stubs-64.h:
-
-/usr/lib/gcc/x86_64-linux-gnu/8/include/stddef.h:
-
-/usr/lib/gcc/x86_64-linux-gnu/8/include/stdarg.h:
-
-/usr/include/x86_64-linux-gnu/bits/types.h:
-
-/usr/include/x86_64-linux-gnu/bits/typesizes.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/__FILE.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/FILE.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/struct_FILE.h:
-
-/usr/include/x86_64-linux-gnu/bits/stdio_lim.h:
-
-/usr/include/x86_64-linux-gnu/bits/sys_errlist.h:
-
-/usr/include/x86_64-linux-gnu/bits/stdio.h:
-
-/usr/include/string.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/locale_t.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/__locale_t.h:
-
-/usr/include/strings.h:
-
-/usr/lib/gcc/x86_64-linux-gnu/8/include/stdint.h:
-
-/usr/include/stdint.h:
-
-/usr/include/x86_64-linux-gnu/bits/wchar.h:
-
-/usr/include/x86_64-linux-gnu/bits/stdint-intn.h:
-
-/usr/include/x86_64-linux-gnu/bits/stdint-uintn.h:
-
+C:/msys64/mingw32/i686-w64-mingw32/include/stdio.h:
+C:/msys64/mingw32/i686-w64-mingw32/include/corecrt_stdio_config.h:
+C:/msys64/mingw32/i686-w64-mingw32/include/corecrt.h:
+C:/msys64/mingw32/i686-w64-mingw32/include/_mingw.h:
+C:/msys64/mingw32/i686-w64-mingw32/include/_mingw_mac.h:
+C:/msys64/mingw32/i686-w64-mingw32/include/_mingw_secapi.h:
+C:/msys64/mingw32/i686-w64-mingw32/include/vadefs.h:
+C:/msys64/mingw32/i686-w64-mingw32/include/sdks/_mingw_ddk.h:
+C:/msys64/mingw32/i686-w64-mingw32/include/_mingw_off_t.h:
+C:/msys64/mingw32/i686-w64-mingw32/include/swprintf.inl:
+C:/msys64/mingw32/i686-w64-mingw32/include/sec_api/stdio_s.h:
+C:/msys64/mingw32/i686-w64-mingw32/include/string.h:
+C:/msys64/mingw32/i686-w64-mingw32/include/crtdefs.h:
+C:/msys64/mingw32/i686-w64-mingw32/include/sec_api/string_s.h:
+C:/msys64/mingw32/lib/gcc/i686-w64-mingw32/10.2.0/include/stdint.h:
+C:/msys64/mingw32/i686-w64-mingw32/include/stdint.h:
+C:/msys64/mingw32/lib/gcc/i686-w64-mingw32/10.2.0/include/stddef.h:
+C:/msys64/mingw32/i686-w64-mingw32/include/stddef.h:
 opprintf.h:
