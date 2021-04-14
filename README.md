@@ -2,7 +2,7 @@
 
 ### Building for Linux
 ```
-sudo apt-get install autotools-dev pkg-config
+sudo apt-get install gcc libelf-dev glib2.0 autotools-dev pkg-config
 sh autogen.sh
 ./configure
 make
