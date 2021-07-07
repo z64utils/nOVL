@@ -44,7 +44,7 @@
 #define NOVL_VERSION_STR    "v1.0.3"
 #define NOVL_NAME           "nOVL"
 #define NOVL_FULL_NAME      "Nintendo Overlay Tool"
-#define NOVL_AUTHOR         "Marshall R. <mbr@64.vg> with fixes by Sauraen & z64me <z64.me>"
+#define NOVL_AUTHOR         "Marshall R. <mbr@64.vg> fixes by Sauraen & z64me <z64.me>"
 
 /* Relocation return values */
 #define NOVL_RELOC_FAIL     2

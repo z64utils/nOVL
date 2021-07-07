@@ -257,6 +257,9 @@ static void
 args_process ( int argc, char ** argv )
 {
     int c, i;
+#ifdef _WIN32 /* disable colors by default on win32 */
+    settings.no_colors = 1;
+#endif
     
     /* Loop through arguments */
     while( (c = getopt(argc, argv, flags_fmt)) != -1 )
@@ -331,7 +334,7 @@ args_process ( int argc, char ** argv )
             /* Disable colors in output */
             case 'g':
             {
-              settings.no_colors = 1;
+              settings.no_colors = !settings.no_colors;
             }
             break;
             
