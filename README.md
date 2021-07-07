@@ -9,7 +9,7 @@ make
 ```
 ### Building for Linux after the above approach fails
 ```
-gcc -o novl -s -Os -DNOVL_DEBUG=1 -flto src/*.c `pkg-config --cflags --libs libelf glib-2.0
+gcc -o novl -s -Os -DNOVL_DEBUG=1 -flto src/*.c `pkg-config --cflags --libs libelf glib-2.0`
 ```
 ### Building for Win32 using MSYS2
 ```
