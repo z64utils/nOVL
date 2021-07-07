@@ -75,7 +75,8 @@ typedef int (*novlDoReloc)
     uint32_t *, /* Pointer to instruction in memory */
     uint32_t,   /* Address                          */
     int,        /* Type of relocation to perform    */
-    int         /* Amount to translate addresses    */        
+    int,        /* Amount to translate addresses    */        
+    int         /* bool for whether to do a dry run */
 );
 
 /* Settings structure */
@@ -108,9 +109,8 @@ extern void novl_conv ( uint32_t, char *, char * );
 extern uint32_t novl_reloc_mk ( int, int, int );
 
 /* Relocation functions */
-extern int novl_reloc_do ( uint32_t *, uint32_t, int, int );
+extern int novl_reloc_do ( uint32_t *, uint32_t, int, int, int );
 
    
 
 #endif /* __NOVL_H__ */
-

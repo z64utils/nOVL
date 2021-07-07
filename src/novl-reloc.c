@@ -48,9 +48,11 @@ static uint32_t hilopair_regs[32];
 
 /* Relocate a 32-bit pointer */
 static int
-novl_reloc_mips_32 ( uint32_t * i, uint32_t address, int type, int offset )
+novl_reloc_mips_32 ( uint32_t * i, uint32_t address, int type, int offset, int dryrun )
 {
     uint32_t w;
+    
+    if(dryrun) return NOVL_RELOC_SUCCESS;
     
     /* Read word (in our endian) */
     w = g_ntohl( *i );
@@ -68,7 +70,7 @@ novl_reloc_mips_32 ( uint32_t * i, uint32_t address, int type, int offset )
 
 /* Relocate a 26-bit (jump target) pointer */
 static int
-novl_reloc_mips_26 ( uint32_t * i, uint32_t address, int type, int offset )
+novl_reloc_mips_26 ( uint32_t * i, uint32_t address, int type, int offset, int dryrun )
 {
     #define MKR(x)  (((x)<<2)|0x80000000)
     uint32_t w, old_tgt, new_tgt;
@@ -88,6 +90,8 @@ novl_reloc_mips_26 ( uint32_t * i, uint32_t address, int type, int offset )
         return NOVL_RELOC_FAIL;
     }
     
+    if(dryrun) return NOVL_RELOC_SUCCESS;
+    
     /* Make new target */
     new_tgt = old_tgt + (offset / 4);
     
@@ -105,7 +109,7 @@ novl_reloc_mips_26 ( uint32_t * i, uint32_t address, int type, int offset )
 
 /* Relocate the high part of an immediate value */
 static int
-novl_reloc_mips_hi16 ( uint32_t * i, uint32_t address, int type, int offset )
+novl_reloc_mips_hi16 ( uint32_t * i, uint32_t address, int type, int offset, int dryrun )
 {
     uint32_t w;
     int reg;
@@ -127,7 +131,7 @@ novl_reloc_mips_hi16 ( uint32_t * i, uint32_t address, int type, int offset )
 
 /* Relocate the low part of an immediate value */
 static int
-novl_reloc_mips_lo16 ( uint32_t * i, uint32_t address, int type, int offset )
+novl_reloc_mips_lo16 ( uint32_t * i, uint32_t address, int type, int offset, int dryrun )
 {
     int16_t val;
     uint32_t w, old_w, new_addr, hi, lo;
@@ -153,6 +157,8 @@ novl_reloc_mips_lo16 ( uint32_t * i, uint32_t address, int type, int offset )
         
         return NOVL_RELOC_FAIL;
     }
+    
+    if(dryrun) return NOVL_RELOC_SUCCESS;
     
     /* Relocate it */
     new_addr = hilopair_regs[reg] + offset;
@@ -199,7 +205,7 @@ novlDoReloc novl_reloc_jt[R_MIPS_NUM] =
    
 /* Do a relocation */
 int
-novl_reloc_do ( uint32_t * i, uint32_t address, int type, int offset )
+novl_reloc_do ( uint32_t * i, uint32_t address, int type, int offset, int dryrun )
 {
     novlDoReloc handler;
     
@@ -214,7 +220,7 @@ novl_reloc_do ( uint32_t * i, uint32_t address, int type, int offset )
     }
     
     /* Call it */
-    return handler( i, address, type, offset );
+    return handler( i, address, type, offset, dryrun );
 }
 
 /* Generate a Nintendo relocation */
@@ -229,4 +235,3 @@ novl_reloc_mk ( int sec, int offset, int type )
     
     return w;
 }
-

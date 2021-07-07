@@ -112,7 +112,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     uint32_t header_offset;
     struct ovl_header_t new_head;
     GList * ninty_relocs, * last;
-    int ninty_count;
+    int ninty_count_pred, ninty_count_real;
     char * name;
     Elf_Data * data;
     int i, n, v;
@@ -121,7 +121,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     uint32_t backwards;
     
     ninty_relocs = NULL;
-    ninty_count = 0;
+    ninty_count_pred = 0;
     v = 0;
     greatest = 0;
     
@@ -309,7 +309,39 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
         {
             /* Get relocations */
             for( i = 0; gelf_getrel(data, i, &rel); i++ )
-                ninty_count += 1;
+            {
+                uint32_t off, nr;
+                int v;
+                
+                /* Calculate offset */
+                off = (uint32_t)rel.r_offset - elf_ep;
+                
+                /* Dry run of relocating */
+                v = novl_reloc_do( (uint32_t*)(&memory[off]), (int)rel.r_offset, (int)rel.r_info, offset, 1 );
+                
+                /* Check result */
+                if( !v )
+                {
+                    /* Whaat? */
+                    ERROR( "Relocation type %s has no registered handler. Abort.", novl_str_reloc((int)rel.r_info) );
+                    DEBUG( "%i,%i", (int)rel.r_offset, (int)rel.r_info );
+                    exit( EXIT_FAILURE );
+                }
+                
+                /* Skip relocation generation? */
+                if( v == NOVL_RELOC_FAIL )
+                {
+                    /* We may also have to remove the first half of a HI16/LO16
+                       reloc */
+                    if( (int)rel.r_info == R_MIPS_LO16 )
+                    {
+                        ninty_count_pred--;
+                    }
+                    continue;
+                }
+                
+                ninty_count_pred++;
+            }
         }
     }
     bin_max = elf_ep; /* entry point */
@@ -317,7 +349,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     bin_max += sizes[OVL_S_DATA];
     bin_max += sizes[OVL_S_RODATA];
     bin_max += 5 * sizeof(uint32_t); /* header size */
-    bin_max += ninty_count * sizeof(uint32_t); /* relocation block size */
+    bin_max += ninty_count_pred * sizeof(uint32_t); /* relocation block size */
     bin_max += 4; /* space for footer */
     if (bin_max & 15) /* 16 byte alignment */
         bin_max += 16 - (bin_max & 15);
@@ -343,7 +375,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     /* Step through section list once more */
     elf_getshdrstrndx( elf, &sh_strcount );
     section = NULL;
-    ninty_count = 0;
+    ninty_count_real = 0;
     while( (section = elf_nextscn(elf, section)) )
     {
         int id;
@@ -384,7 +416,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
                 off = (uint32_t)rel.r_offset - elf_ep;
                 
                 /* Relocate! */
-                v = novl_reloc_do( (uint32_t*)(&memory[off]), (int)rel.r_offset, (int)rel.r_info, offset );
+                v = novl_reloc_do( (uint32_t*)(&memory[off]), (int)rel.r_offset, (int)rel.r_info, offset, 0 );
                 
                 /* Check result */
                 if( !v )
@@ -412,7 +444,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
                         
                         /* Remove node */
                         ninty_relocs = g_list_delete_link( ninty_relocs, n );
-                        ninty_count--;
+                        ninty_count_real--;
                     }
                     continue;
                 }
@@ -420,7 +452,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
                 /* Generate a nintendo relocation */
                 nr = novl_reloc_mk(id + 1, (int)rel.r_offset - starts[id], (int)rel.r_info);
                 ninty_relocs = g_list_append( ninty_relocs, GUINT_TO_POINTER(nr) );
-                ninty_count++;
+                ninty_count_real++;
                 
                 /* Set last link node */
                 if( !last )
@@ -433,6 +465,15 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
                 }
             }
         }
+    }
+    
+    if(ninty_count_pred != ninty_count_real)
+    {
+        ERROR("Relocation prediction failed! ninty_count_pred = %d, ninty_count_real = %d"
+            , ninty_count_pred, ninty_count_real);
+        fclose(ovl_out);
+        remove(out);
+        exit( EXIT_FAILURE );
     }
     
     /*
@@ -451,7 +492,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     
     /* Copy sizes */
     memcpy( new_head.sizes, sizes, sizeof(new_head.sizes) );
-    new_head.relocation_count = ninty_count;
+    new_head.relocation_count = ninty_count_real;
     
     /* Swap... */
     for( i = 0; i < sizeof(new_head)/4; i++ )
@@ -503,8 +544,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     if (starts[OVL_S_BSS] != ftell(ovl_out) + elf_ep)
     {
         ERROR(
-            ".bss predicted incorrectly (got %08X, should be %08X)"
-            " (the algorithm needs work...)"
+            "Relocation prediction failed! .bss address predicted as %08X, is actually %08X"
             , starts[OVL_S_BSS]
             , ftell(ovl_out) + elf_ep
         );
@@ -529,4 +569,3 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     elf_end( elf );
     close( elf_fd );
 }
-

@@ -7,6 +7,10 @@ sh autogen.sh
 ./configure
 make
 ```
+### Building for Linux after the above approach fails
+```
+gcc -o novl -s -Os -DNOVL_DEBUG=1 -flto src/*.c `pkg-config --cflags --libs libelf glib-2.0
+```
 ### Building for Win32 using MSYS2
 ```
 pacman -S base-devel gcc mingw32/mingw-w64-i686-glib2 mingw-w64-i686-libelf
