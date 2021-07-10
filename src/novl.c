@@ -60,7 +60,7 @@ char * novl_str_reloc_types[] =
 };
 
 /* The settings structure */
-struct novl_settings_t settings;
+struct novl_settings_t settings = {};
 
 
 /* ----------------------------------------------
@@ -73,5 +73,3 @@ novl_str_reloc ( int reloc )
 {
     return novl_str_reloc_types[reloc];
 }
-
-

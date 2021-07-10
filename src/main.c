@@ -50,7 +50,6 @@ enum nOVLopmode
 static char * flags_fmt = "clrDdVgvsho:A:?";
 
 /* Command line arguments - values */
-static uint32_t Aval;
 static char * oval;
 
 /* Filenames */
@@ -96,7 +95,7 @@ disassemble ( char * filename, int all )
         cnt = 1;
     
     /* Set base address */
-    addr = Aval;
+    addr = settings.base_addr;
     
     /* Start disassembly on a section */
     for( i = 0; i < cnt; i++ )
@@ -161,7 +160,7 @@ list_relocations ( char * filename )
         
         printf( 
             "0x%08X  %-8s  %-14s  0x%08X\n", 
-            a + Aval,
+            a + settings.base_addr,
             ovl_section_names[OVL_RELOC_GET_SEC(ovl->relocations[i])],
             novl_str_reloc_types[OVL_RELOC_GET_TYPE(ovl->relocations[i])],
             g_ntohl( *(uint32_t*)(ovl->data + a) )
@@ -205,7 +204,7 @@ list_sections ( char * filename )
         printf( 
             "%-10s 0x%08X     %s\n", 
             ovl_section_names[i], 
-            Aval + ovl->sections[i]->addr,
+            settings.base_addr + ovl->sections[i]->addr,
             size
         );
     }
@@ -235,7 +234,7 @@ convert_elf ( char * filename )
         exit( EXIT_FAILURE );
     }
     
-    novl_conv( Aval, filename, oval );
+    novl_conv( filename, oval );
     
     NOTICE( "Finished conversion." );
 }
@@ -308,12 +307,10 @@ args_process ( int argc, char ** argv )
             }
             break;
             
-            
             /* Actor base address */
             case 'A':
             {
-              sscanf( optarg, "%X", &Aval );
-              settings.ovl_base = Aval;
+              sscanf( optarg, "%X", &settings.base_addr );
             }
             break;
             
@@ -396,7 +393,7 @@ main ( int argc, char ** argv )
     
     /* Doop doop. Analyze flags */
     if( GET_FLAG('A') )
-        DEBUG( "Base address set to 0x%08X.", settings.ovl_base );
+        DEBUG( "Base address set to 0x%08X.", settings.base_addr );
     if( GET_FLAG('o') )
         DEBUG( "Output file set to \"%s\".", oval );
     if( GET_FLAG('h') )
@@ -477,4 +474,3 @@ main ( int argc, char ** argv )
     
     return EXIT_SUCCESS;
 }
-

@@ -40,11 +40,6 @@
 #define O_BINARY 0
 #endif
 
-/* This is an ugly hack! */
-uint32_t bin_min;
-uint32_t bin_max;
-
-
 /* ----------------------------------------------
    Local variables 
    ---------------------------------------------- */
@@ -53,7 +48,8 @@ static FILE      * ovl_out;
 static uint32_t    elf_ep;
 static uint8_t     memory[4 * 1024 * 1024];
 static uint32_t    starts[OVL_S_COUNT];
-static uint32_t    sizes[OVL_S_COUNT];
+uint32_t           orig_starts[OVL_S_COUNT];
+uint32_t           sizes[OVL_S_COUNT];
 static int         elf_fd;
 static Elf       * elf;
 static GElf_Ehdr   elf_head;
@@ -101,7 +97,7 @@ valid_sec ( char * s )
 
 /* Convert an ELF file to a Nintendo overlay */
 void
-novl_conv ( uint32_t tgt_addr, char * in, char * out )
+novl_conv ( char * in, char * out )
 {
     Elf_Kind kind;
     Elf_Scn * section;
@@ -119,6 +115,7 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
     uint32_t tmp;
     uint32_t greatest;
     uint32_t backwards;
+    uint32_t real_end_addr;
     
     ninty_relocs = NULL;
     ninty_count_pred = 0;
@@ -173,16 +170,13 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
         exit( EXIT_FAILURE );
     }
     
-    /* Set entry point */
+    /* Set entry point and offset */
     elf_ep = elf_head.e_entry;
-    bin_min = elf_ep;
+    offset = settings.base_addr - elf_ep;
     
     /* Notice */
     MESG( "\"%s\": valid MIPS ELF file.", in );
-    MESG( "Entry point: 0x%08X. Translating to 0x%08X.", elf_ep, tgt_addr );
-    
-    /* Set offset */
-    offset = tgt_addr - elf_ep;
+    MESG( "Entry point: 0x%08X. Translating to 0x%08X.", elf_ep, settings.base_addr );
     
     /* Output file */
     if( !(ovl_out = fopen(out, "wb")) )
@@ -194,8 +188,6 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
         exit( EXIT_FAILURE );
     }
   
-    
-    
     /*
     **
     ** Start loading the file into memory
@@ -273,7 +265,11 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
         }
     }
     
-    bin_max = greatest + sizes[OVL_S_BSS];
+    /* Backup original starts; starts will be modified later. */
+    for(i=0; i<OVL_S_COUNT; ++i)
+    {
+        orig_starts[i] = starts[i];
+    }
     
     /* predict size of resulting overlay (.bss starts after overlay in vram) */
     elf_getshdrstrndx( elf, &sh_strcount );
@@ -344,17 +340,20 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
             }
         }
     }
-    bin_max = elf_ep; /* entry point */
-    bin_max += sizes[OVL_S_TEXT]; /* section sizes */
-    bin_max += sizes[OVL_S_DATA];
-    bin_max += sizes[OVL_S_RODATA];
-    bin_max += 5 * sizeof(uint32_t); /* header size */
-    bin_max += ninty_count_pred * sizeof(uint32_t); /* relocation block size */
-    bin_max += 4; /* space for footer */
-    if (bin_max & 15) /* 16 byte alignment */
-        bin_max += 16 - (bin_max & 15);
-    starts[OVL_S_BSS] = bin_max;
-    bin_max += sizes[OVL_S_BSS]; /* bin_max = end of overlay in vram */
+    real_end_addr = elf_ep; /* entry point */
+    starts[OVL_S_TEXT] = real_end_addr;
+    real_end_addr += sizes[OVL_S_TEXT]; /* section sizes */
+    starts[OVL_S_DATA] = real_end_addr;
+    real_end_addr += sizes[OVL_S_DATA];
+    starts[OVL_S_RODATA] = real_end_addr;
+    real_end_addr += sizes[OVL_S_RODATA];
+    real_end_addr += 5 * sizeof(uint32_t); /* header size */
+    real_end_addr += ninty_count_pred * sizeof(uint32_t); /* relocation block size */
+    real_end_addr += 4; /* space for footer */
+    real_end_addr = (real_end_addr + 15) & ~15; /* 16 byte alignment */
+    starts[OVL_S_BSS] = real_end_addr;
+    real_end_addr += sizes[OVL_S_BSS]; /* real_end_addr = end of overlay in vram */
+    DEBUG("Overlay (pre-offset) end addr: %08X", real_end_addr);
     
     /* Sections should've loaded now */
     #ifdef NOVL_DEBUG
@@ -363,8 +362,6 @@ novl_conv ( uint32_t tgt_addr, char * in, char * out )
          DEBUG( " %-8s 0x%08X %ib", spec[i].marker, *spec[i].start, *spec[i].size );
      }
     #endif
-    
-    
     
     /*
     **

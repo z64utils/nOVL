@@ -44,7 +44,7 @@
 #define NOVL_VERSION_STR    "v1.0.3"
 #define NOVL_NAME           "nOVL"
 #define NOVL_FULL_NAME      "Nintendo Overlay Tool"
-#define NOVL_AUTHOR         "Marshall R. <mbr@64.vg> fixes by Sauraen & z64me <z64.me>"
+#define NOVL_AUTHOR         "Marshall R. <mbr@64.vg> fixes by AriaHiroshi64, Sauraen, z64me"
 
 /* Relocation return values */
 #define NOVL_RELOC_FAIL     2
@@ -86,7 +86,7 @@ struct novl_settings_t
     int verbosity;
     int no_colors;
     int human_readable;
-    uint32_t ovl_base;
+    uint32_t base_addr;
     uint8_t flags[UCHAR_MAX + 1];
 };
 
@@ -105,7 +105,7 @@ extern struct novl_settings_t settings;
    ---------------------------------------------- */
 
 extern char * novl_str_reloc ( int );
-extern void novl_conv ( uint32_t, char *, char * );
+extern void novl_conv ( char *, char * );
 extern uint32_t novl_reloc_mk ( int, int, int );
 
 /* Relocation functions */

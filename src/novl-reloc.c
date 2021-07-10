@@ -19,12 +19,10 @@
 */
 #include <stdio.h>
 #include "novl.h"
+#include "overlay.h"
 
-
-/* This is an ugly hack! */
-extern uint32_t bin_min;
-extern uint32_t bin_max;
-
+extern uint32_t orig_starts[OVL_S_COUNT];
+extern uint32_t sizes[OVL_S_COUNT];
 
 /* ----------------------------------------------
    Macros/shorthand
@@ -46,16 +44,40 @@ static uint32_t hilopair_regs[32];
    Local functions
    ---------------------------------------------- */
 
+//is_code: 1 for code, 0 for not code, -1 for 32-bit pointer (don't know)
+static int
+novl_is_target_in_included_section(uint32_t address, int is_code)
+{
+    for(int i=0; i<OVL_S_COUNT; ++i)
+    {
+        if(address < orig_starts[i] || address >= orig_starts[i] + sizes[i]) continue;
+        if(is_code == 1 && i > 0 /*data, rodata, bss*/)
+        {
+            DEBUG("Found target address %08X in section %d, but supposed to be code!");
+        }
+        else if(is_code == 0 && i == 0 /*text*/)
+        {
+            DEBUG("Found target address %08X in section %d, but not supposed to be code!");
+        }
+        return 1;
+    }
+    return 0;
+}
+
 /* Relocate a 32-bit pointer */
 static int
 novl_reloc_mips_32 ( uint32_t * i, uint32_t address, int type, int offset, int dryrun )
 {
     uint32_t w;
     
-    if(dryrun) return NOVL_RELOC_SUCCESS;
-    
     /* Read word (in our endian) */
     w = g_ntohl( *i );
+    
+    if(!novl_is_target_in_included_section(w, -1))
+    {
+        DEBUG_R( "%s: skipping 0x%08X - out of bounds", STRTYPE(type), w );
+        return NOVL_RELOC_FAIL;
+    }
     
     /* Apply offset */
     w += offset;
@@ -82,11 +104,9 @@ novl_reloc_mips_26 ( uint32_t * i, uint32_t address, int type, int offset, int d
     old_tgt = w & 0x03FFFFFF;
     
     /* In range? */
-    if( bin_min && bin_max )
-    if( !(MKR(old_tgt) >= bin_min && MKR(old_tgt) < bin_max) )
+    if( !novl_is_target_in_included_section(MKR(old_tgt), 1) )
     {
         DEBUG_R( "%s: skipping 0x%08X - out of bounds", STRTYPE(type), MKR(old_tgt) );
-        
         return NOVL_RELOC_FAIL;
     }
     
@@ -150,11 +170,9 @@ novl_reloc_mips_lo16 ( uint32_t * i, uint32_t address, int type, int offset, int
     hilopair_regs[reg] += val;
     
     /* Skip this? */
-    if( bin_min && bin_max )
-    if( !(hilopair_regs[reg] >= bin_min  && hilopair_regs[reg] < bin_max) )
+    if( !novl_is_target_in_included_section(hilopair_regs[reg], 0) )
     {
         DEBUG_R( "HI16/LO16: Skipping 0x%08X - out of bounds", hilopair_regs[reg] );
-        
         return NOVL_RELOC_FAIL;
     }
     
