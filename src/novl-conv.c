@@ -306,7 +306,7 @@ novl_conv ( char * in, char * out )
             /* Get relocations */
             for( i = 0; gelf_getrel(data, i, &rel); i++ )
             {
-                uint32_t off, nr;
+                uint32_t off;
                 int v;
                 
                 /* Calculate offset */
