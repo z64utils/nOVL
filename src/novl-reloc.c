@@ -44,7 +44,10 @@ static uint32_t hilopair_regs[32];
    Local functions
    ---------------------------------------------- */
 
-//is_code: 1 for code, 0 for not code, -1 for 32-bit pointer (don't know)
+//is_code: 1 for code, 0 for not code, -1 for don't know
+//0 for not code is no longer used: all three types of instructions (32-bit
+//pointers, 26-bit jump targets, and hi/lo pairs) can all legitimately point to
+//the text section.
 static int
 novl_is_target_in_included_section(uint32_t address, int is_code)
 {
@@ -53,11 +56,11 @@ novl_is_target_in_included_section(uint32_t address, int is_code)
         if(address < orig_starts[i] || address >= orig_starts[i] + sizes[i]) continue;
         if(is_code == 1 && i > 0 /*data, rodata, bss*/)
         {
-            DEBUG("Found target address %08X in section %d, but supposed to be code!");
+            DEBUG("Found target address %08X in section %d, but the instruction type should only be pointing to code!", address, i);
         }
-        else if(is_code == 0 && i == 0 /*text*/)
+        else if(is_code == 0 && i == 0)
         {
-            DEBUG("Found target address %08X in section %d, but not supposed to be code!");
+            DEBUG("Found target address %08X in text section, but the instruction type should only be pointing to data!", address);
         }
         return 1;
     }
@@ -170,7 +173,7 @@ novl_reloc_mips_lo16 ( uint32_t * i, uint32_t address, int type, int offset, int
     hilopair_regs[reg] += val;
     
     /* Skip this? */
-    if( !novl_is_target_in_included_section(hilopair_regs[reg], 0) )
+    if( !novl_is_target_in_included_section(hilopair_regs[reg], -1) )
     {
         DEBUG_R( "HI16/LO16: Skipping 0x%08X - out of bounds", hilopair_regs[reg] );
         return NOVL_RELOC_FAIL;
