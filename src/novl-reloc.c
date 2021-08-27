@@ -64,7 +64,7 @@ adjust_address(uint32_t *addr, int type)
     int s = get_target_section(oldvalue);
     if(s < 0)
     {
-        DEBUG_R( "%s: skipping 0x%08X - out of bounds", STRTYPE(type), w );
+        DEBUG_R( "%s: skipping 0x%08X - out of bounds", STRTYPE(type), oldvalue );
         return NOVL_RELOC_FAIL;
     }
     if(type == 4 && s != 0)
@@ -161,6 +161,7 @@ novl_reloc_mips_lo16 ( uint32_t * i, int dryrun )
     int16_t val;
     uint32_t w, old_w, addr, hi, lo;
     int reg;
+    int ret;
     
     /* Read word (in our endian) */
     w = g_ntohl( *i );
