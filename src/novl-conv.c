@@ -345,10 +345,10 @@ novl_conv ( char * in, char * out )
     
     #ifdef NOVL_DEBUG
     DEBUG("Section reloc info:");
-    DEBUG(" section   ELF addr   OVL addr  size");
+    DEBUG(" section   ELF addr   OVL addr   size");
     for( i = 0; i < OVL_S_COUNT; i++ )
     {
-        DEBUG(" %-8s 0x%08X 0x%08X %4X", section_names[i], elf_starts[i], ovl_starts[i], sizes[i]);
+        DEBUG(" %-8s 0x%08X 0x%08X 0x%4X", section_names[i], elf_starts[i], ovl_starts[i], sizes[i]);
     }
     DEBUG("Overlay end addr: %08X", ovl_end_addr);
     #endif
@@ -403,8 +403,9 @@ novl_conv ( char * in, char * out )
                 off = (uint32_t)rel.r_offset - elf_ep;
                 
                 /* Relocate! */
+                DEBUG("OVL %08X ELF %08X", ovl_starts[id], elf_starts[id]);
                 v = novl_reloc_do( (uint32_t*)(&memory[off]), (int)rel.r_info, 
-                    ovl_starts[id] - elf_starts[id], 0 );
+                    (int)ovl_starts[id] - (int)elf_starts[id], 0 );
                 
                 /* Check result */
                 if( !v )
@@ -438,7 +439,7 @@ novl_conv ( char * in, char * out )
                 }
                 
                 /* Generate a nintendo relocation */
-                nr = novl_reloc_mk(id + 1, (int)rel.r_offset - ovl_starts[id], (int)rel.r_info);
+                nr = novl_reloc_mk(id + 1, (int)rel.r_offset - elf_starts[id], (int)rel.r_info);
                 ninty_relocs = g_list_append( ninty_relocs, GUINT_TO_POINTER(nr) );
                 ninty_count_real++;
                 
