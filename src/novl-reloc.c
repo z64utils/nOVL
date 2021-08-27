@@ -58,7 +58,7 @@ get_target_section(uint32_t address)
 }
 
 static int
-adjust_address(uint32_t *addr, int type)
+adjust_address(uint32_t *addr, int type, int dryrun)
 {
     uint32_t oldvalue = *addr;
     int s = get_target_section(oldvalue);
@@ -73,8 +73,11 @@ adjust_address(uint32_t *addr, int type)
             section_names[s], oldvalue);
         return FALSE;
     }
-    *addr += ovl_starts[s] - elf_starts[s];
-    DEBUG_R( "%s: 0x%08X -> 0x%08X", STRTYPE(type), oldvalue, *addr);
+    if(!dryrun)
+    {
+        *addr += ovl_starts[s] - elf_starts[s];
+        DEBUG_R( "%s: 0x%08X -> 0x%08X", STRTYPE(type), oldvalue, *addr);
+    }
     return NOVL_RELOC_SUCCESS;
 }
 
@@ -90,7 +93,7 @@ novl_reloc_mips_32 ( uint32_t * i, int dryrun )
     w = g_ntohl( *i );
     
     /* Apply offset */
-    if((ret = adjust_address(&w, type)) != NOVL_RELOC_SUCCESS) return ret;
+    if((ret = adjust_address(&w, type, dryrun)) != NOVL_RELOC_SUCCESS) return ret;
     
     if(!dryrun)
     {
@@ -116,7 +119,7 @@ novl_reloc_mips_26 ( uint32_t * i, int dryrun )
     addr = ((w & 0x03FFFFFF) << 2) | 0x80000000;
     
     /* Apply offset */
-    if((ret = adjust_address(&addr, type)) != NOVL_RELOC_SUCCESS) return ret;
+    if((ret = adjust_address(&addr, type, dryrun)) != NOVL_RELOC_SUCCESS) return ret;
     
     if(!dryrun)
     {
@@ -176,7 +179,7 @@ novl_reloc_mips_lo16 ( uint32_t * i, int dryrun )
     addr = hilopair_regs[reg] + val;
     
     /* Apply offset */
-    if((ret = adjust_address(&addr, type)) != NOVL_RELOC_SUCCESS) return ret;
+    if((ret = adjust_address(&addr, type, dryrun)) != NOVL_RELOC_SUCCESS) return ret;
     
     if(!dryrun)
     {
