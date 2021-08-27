@@ -385,7 +385,7 @@ novl_conv ( char * in, char * out )
         }
         
         /* We want this */
-        DEBUG( "Processing relocation entries from '%s'.", name ) ;
+        DEBUG( "Processing relocation entries from '%s' == (%d) %s", name, id, section_names[id] ) ;
         
         data = NULL;
         last = NULL;
