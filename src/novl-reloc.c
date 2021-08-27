@@ -22,7 +22,9 @@
 #include "overlay.h"
 
 extern uint32_t elf_starts[OVL_S_COUNT];
+extern uint32_t ovl_starts[OVL_S_COUNT];
 extern uint32_t sizes[OVL_S_COUNT];
+extern const char * section_names[OVL_S_COUNT];
 
 /* ----------------------------------------------
    Macros/shorthand
@@ -44,96 +46,95 @@ static uint32_t hilopair_regs[32];
    Local functions
    ---------------------------------------------- */
 
-//is_code: 1 for code, 0 for not code, -1 for don't know
-//0 for not code is no longer used: all three types of instructions (32-bit
-//pointers, 26-bit jump targets, and hi/lo pairs) can all legitimately point to
-//the text section.
 static int
-novl_is_target_in_included_section(uint32_t address, int is_code)
+get_target_section(uint32_t address)
 {
     for(int i=0; i<OVL_S_COUNT; ++i)
     {
         if(address < elf_starts[i] || address >= elf_starts[i] + sizes[i]) continue;
-        if(is_code == 1 && i > 0 /*data, rodata, bss*/)
-        {
-            DEBUG("Found target address %08X in section %d, but the instruction type should only be pointing to code!", address, i);
-        }
-        else if(is_code == 0 && i == 0)
-        {
-            DEBUG("Found target address %08X in text section, but the instruction type should only be pointing to data!", address);
-        }
-        return 1;
+        return i;
     }
-    return 0;
+    return -1;
 }
 
-/* Relocate a 32-bit pointer */
 static int
-novl_reloc_mips_32 ( uint32_t * i, int type, int ptrvalchange, int dryrun )
+adjust_address(uint32_t *addr, int type)
 {
-    uint32_t w;
-    
-    /* Read word (in our endian) */
-    w = g_ntohl( *i );
-    
-    if(!novl_is_target_in_included_section(w, -1))
+    uint32_t oldvalue = *addr;
+    int s = get_target_section(oldvalue);
+    if(s < 0)
     {
         DEBUG_R( "%s: skipping 0x%08X - out of bounds", STRTYPE(type), w );
         return NOVL_RELOC_FAIL;
     }
+    if(type == 4 && s != 0)
+    {
+        ERROR("26-bit jump instruction pointing to the %s section (not .text) (target 0x%08X)!",
+            section_names[s], oldvalue);
+        return FALSE;
+    }
+    *addr += ovl_starts[s] - elf_starts[s];
+    DEBUG_R( "%s: 0x%08X -> 0x%08X", STRTYPE(type), oldvalue, *addr);
+    return NOVL_RELOC_SUCCESS;
+}
+
+/* Relocate a 32-bit pointer */
+static int
+novl_reloc_mips_32 ( uint32_t * i, int dryrun )
+{
+    const int type = 2;
+    uint32_t w;
+    int ret;
+    
+    /* Read word (in our endian) */
+    w = g_ntohl( *i );
     
     /* Apply offset */
-    w += ptrvalchange;
+    if((ret = adjust_address(&w, type)) != NOVL_RELOC_SUCCESS) return ret;
     
-    /* Write it back */
-    *i = g_htonl( w );
-    
-    /**/ DEBUG_R( "%s: 0x%08X -> 0x%08X", STRTYPE(type), w - ptrvalchange, w );
+    if(!dryrun)
+    {
+        /* Write it back */
+        *i = g_htonl( w );
+    }
     
     return NOVL_RELOC_SUCCESS;
 }
 
 /* Relocate a 26-bit (jump target) pointer */
 static int
-novl_reloc_mips_26 ( uint32_t * i, int type, int ptrvalchange, int dryrun )
+novl_reloc_mips_26 ( uint32_t * i, int dryrun )
 {
-    #define MKR(x)  (((x)<<2)|0x80000000)
-    uint32_t w, old_tgt, new_tgt;
+    const int type = 4;
+    uint32_t w, addr;
+    int ret;
     
     /* Read word (in our endian) */
     w = g_ntohl( *i );
     
-    /* Get target */
-    old_tgt = w & 0x03FFFFFF;
+    /* Convert to address */
+    addr = ((w & 0x03FFFFFF) << 2) | 0x80000000;
     
-    /* In range? */
-    if( !novl_is_target_in_included_section(MKR(old_tgt), 1) )
+    /* Apply offset */
+    if((ret = adjust_address(&addr, type)) != NOVL_RELOC_SUCCESS) return ret;
+    
+    if(!dryrun)
     {
-        DEBUG_R( "%s: skipping 0x%08X - out of bounds", STRTYPE(type), MKR(old_tgt) );
-        return NOVL_RELOC_FAIL;
+        /* Convert back to jump instruction */
+        w = (w & ~0x03FFFFFF) | ((addr >> 2) & 0x03FFFFFF);
+        
+        /* Write it back */
+        *i = g_htonl( w );
     }
-    
-    if(dryrun) return NOVL_RELOC_SUCCESS;
-    
-    /* Make new target */
-    new_tgt = old_tgt + (ptrvalchange / 4);
-    
-    /* Apply */
-    w &= ~0x03FFFFFF;
-    w |= new_tgt & 0x03FFFFFF;
-    
-    /* Write it back */
-    *i = g_htonl( w );
-    
-    /**/ DEBUG_R( "%s: 0x%08X -> 0x%08X", STRTYPE(type), MKR(old_tgt), MKR(new_tgt) );
     
     return NOVL_RELOC_SUCCESS;
 }
 
 /* Relocate the high part of an immediate value */
 static int
-novl_reloc_mips_hi16 ( uint32_t * i, int type, int ptrvalchange, int dryrun )
+novl_reloc_mips_hi16 ( uint32_t * i, int dryrun )
 {
+    const int type = 5;
     uint32_t w;
     int reg;
     
@@ -154,10 +155,11 @@ novl_reloc_mips_hi16 ( uint32_t * i, int type, int ptrvalchange, int dryrun )
 
 /* Relocate the low part of an immediate value */
 static int
-novl_reloc_mips_lo16 ( uint32_t * i, int type, int ptrvalchange, int dryrun )
+novl_reloc_mips_lo16 ( uint32_t * i, int dryrun )
 {
+    const int type = 6;
     int16_t val;
-    uint32_t w, old_w, new_addr, hi, lo;
+    uint32_t w, old_w, addr, hi, lo;
     int reg;
     
     /* Read word (in our endian) */
@@ -170,32 +172,24 @@ novl_reloc_mips_lo16 ( uint32_t * i, int type, int ptrvalchange, int dryrun )
     val = (int16_t)(w & 0xFFFF);
     
     /* Finish building the value */
-    hilopair_regs[reg] += val;
+    addr = hilopair_regs[reg] + val;
     
-    /* Skip this? */
-    if( !novl_is_target_in_included_section(hilopair_regs[reg], -1) )
+    /* Apply offset */
+    if((ret = adjust_address(&addr, type)) != NOVL_RELOC_SUCCESS) return ret;
+    
+    if(!dryrun)
     {
-        DEBUG_R( "HI16/LO16: Skipping 0x%08X - out of bounds", hilopair_regs[reg] );
-        return NOVL_RELOC_FAIL;
+        /* Cut it up */
+        lo = addr & 0xFFFF;
+        hi = (addr >> 16) + ((lo & 0x8000) ? 1 : 0);
+        
+        /* Get old word (part 1) */
+        old_w = g_ntohl( *hilopair_ptrs[reg] );
+        
+        /* Update the instructions */
+        *i = g_htonl( (w & 0xFFFF0000) | lo );
+        *hilopair_ptrs[reg] = g_htonl( (old_w & 0xFFFF0000) | hi );
     }
-    
-    if(dryrun) return NOVL_RELOC_SUCCESS;
-    
-    /* Relocate it */
-    new_addr = hilopair_regs[reg] + ptrvalchange;
-    
-    /* Cut it up */
-    lo = new_addr & 0xFFFF;
-    hi = (new_addr >> 16) + ((lo & 0x8000) ? 1 : 0);
-    
-    /* Get old word (part 1) */
-    old_w = g_ntohl( *hilopair_ptrs[reg] );
-    
-    /* Update the instructions */
-    *i = g_htonl( (w & 0xFFFF0000) | lo );
-    *hilopair_ptrs[reg] = g_htonl( (old_w & 0xFFFF0000) | hi );
-    
-    /**/ DEBUG_R( "HI16/LO16: 0x%08X -> 0x%08X", hilopair_regs[reg], new_addr );
     
     return NOVL_RELOC_SUCCESS;
 }
@@ -226,7 +220,7 @@ novlDoReloc novl_reloc_jt[R_MIPS_NUM] =
    
 /* Do a relocation */
 int
-novl_reloc_do ( uint32_t * i, int type, int ptrvalchange, int dryrun )
+novl_reloc_do ( uint32_t * i, int type, int dryrun )
 {
     novlDoReloc handler;
     
@@ -241,7 +235,7 @@ novl_reloc_do ( uint32_t * i, int type, int ptrvalchange, int dryrun )
     }
     
     /* Call it */
-    return handler( i, type, ptrvalchange, dryrun );
+    return handler( i, dryrun );
 }
 
 /* Generate a Nintendo relocation */

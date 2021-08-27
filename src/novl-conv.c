@@ -48,14 +48,13 @@ static FILE      * ovl_out;
 static uint32_t    elf_ep;
 static uint8_t     memory[4 * 1024 * 1024];
 uint32_t           elf_starts[OVL_S_COUNT];
+uint32_t           ovl_starts[OVL_S_COUNT];
 uint32_t           sizes[OVL_S_COUNT];
-static uint32_t    ovl_starts[OVL_S_COUNT];
 static int         elf_fd;
 static Elf       * elf;
 static GElf_Ehdr   elf_head;
-static int         change_entry_point_offset;
 
-static const char * section_names[OVL_S_COUNT] = {
+const char * section_names[OVL_S_COUNT] = {
     ".text", ".data", ".rodata", ".bss"
 };
 
@@ -158,9 +157,8 @@ novl_conv ( char * in, char * out )
         exit( EXIT_FAILURE );
     }
     
-    /* Set entry point and how much we're moving the entry point (address of start of code) */
+    /* Set entry point */
     elf_ep = elf_head.e_entry;
-    change_entry_point_offset = settings.base_addr - elf_ep;
     
     /* Notice */
     MESG( "\"%s\": valid MIPS ELF file.", in );
@@ -298,7 +296,7 @@ novl_conv ( char * in, char * out )
                 off = (uint32_t)rel.r_offset - elf_ep;
                 
                 /* Dry run of relocating */
-                v = novl_reloc_do( (uint32_t*)(&memory[off]), (int)rel.r_info, 0, 1 );
+                v = novl_reloc_do( (uint32_t*)(&memory[off]), (int)rel.r_info, 1 );
                 
                 /* Check result */
                 if( !v )
@@ -328,7 +326,7 @@ novl_conv ( char * in, char * out )
     
     /* Compute overlay (output) addresses */
     
-    ovl_end_addr = settings.base_addr; /* elf_ep + change_entry_point_offset */
+    ovl_end_addr = settings.base_addr; /* new entry point */
     ovl_starts[OVL_S_TEXT] = ovl_end_addr;
     ovl_end_addr += sizes[OVL_S_TEXT]; /* section sizes */
     ovl_starts[OVL_S_DATA] = ovl_end_addr;
@@ -385,7 +383,7 @@ novl_conv ( char * in, char * out )
         }
         
         /* We want this */
-        DEBUG( "Processing relocation entries from '%s' == (%d) %s", name, id, section_names[id] ) ;
+        DEBUG( "Processing relocation entries from '%s'", name) ;
         
         data = NULL;
         last = NULL;
@@ -403,9 +401,7 @@ novl_conv ( char * in, char * out )
                 off = (uint32_t)rel.r_offset - elf_ep;
                 
                 /* Relocate! */
-                DEBUG("OVL %08X ELF %08X", ovl_starts[id], elf_starts[id]);
-                v = novl_reloc_do( (uint32_t*)(&memory[off]), (int)rel.r_info, 
-                    (int)ovl_starts[id] - (int)elf_starts[id], 0 );
+                v = novl_reloc_do( (uint32_t*)(&memory[off]), (int)rel.r_info, 0 );
                 
                 /* Check result */
                 if( !v )
