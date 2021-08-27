@@ -53,7 +53,7 @@ novl_is_target_in_included_section(uint32_t address, int is_code)
 {
     for(int i=0; i<OVL_S_COUNT; ++i)
     {
-        if(address < orig_starts[i] || address >= orig_starts[i] + sizes[i]) continue;
+        if(address < elf_starts[i] || address >= elf_starts[i] + sizes[i]) continue;
         if(is_code == 1 && i > 0 /*data, rodata, bss*/)
         {
             DEBUG("Found target address %08X in section %d, but the instruction type should only be pointing to code!", address, i);
@@ -69,7 +69,7 @@ novl_is_target_in_included_section(uint32_t address, int is_code)
 
 /* Relocate a 32-bit pointer */
 static int
-novl_reloc_mips_32 ( uint32_t * i, uint32_t address, int type, int offset, int dryrun )
+novl_reloc_mips_32 ( uint32_t * i, int type, int ptrvalchange, int dryrun )
 {
     uint32_t w;
     
@@ -83,19 +83,19 @@ novl_reloc_mips_32 ( uint32_t * i, uint32_t address, int type, int offset, int d
     }
     
     /* Apply offset */
-    w += offset;
+    w += ptrvalchange;
     
     /* Write it back */
     *i = g_htonl( w );
     
-    /**/ DEBUG_R( "%s: 0x%08X -> 0x%08X", STRTYPE(type), w - offset, w );
+    /**/ DEBUG_R( "%s: 0x%08X -> 0x%08X", STRTYPE(type), w - ptrvalchange, w );
     
     return NOVL_RELOC_SUCCESS;
 }
 
 /* Relocate a 26-bit (jump target) pointer */
 static int
-novl_reloc_mips_26 ( uint32_t * i, uint32_t address, int type, int offset, int dryrun )
+novl_reloc_mips_26 ( uint32_t * i, int type, int ptrvalchange, int dryrun )
 {
     #define MKR(x)  (((x)<<2)|0x80000000)
     uint32_t w, old_tgt, new_tgt;
@@ -116,7 +116,7 @@ novl_reloc_mips_26 ( uint32_t * i, uint32_t address, int type, int offset, int d
     if(dryrun) return NOVL_RELOC_SUCCESS;
     
     /* Make new target */
-    new_tgt = old_tgt + (offset / 4);
+    new_tgt = old_tgt + (ptrvalchange / 4);
     
     /* Apply */
     w &= ~0x03FFFFFF;
@@ -132,7 +132,7 @@ novl_reloc_mips_26 ( uint32_t * i, uint32_t address, int type, int offset, int d
 
 /* Relocate the high part of an immediate value */
 static int
-novl_reloc_mips_hi16 ( uint32_t * i, uint32_t address, int type, int offset, int dryrun )
+novl_reloc_mips_hi16 ( uint32_t * i, int type, int ptrvalchange, int dryrun )
 {
     uint32_t w;
     int reg;
@@ -154,7 +154,7 @@ novl_reloc_mips_hi16 ( uint32_t * i, uint32_t address, int type, int offset, int
 
 /* Relocate the low part of an immediate value */
 static int
-novl_reloc_mips_lo16 ( uint32_t * i, uint32_t address, int type, int offset, int dryrun )
+novl_reloc_mips_lo16 ( uint32_t * i, int type, int ptrvalchange, int dryrun )
 {
     int16_t val;
     uint32_t w, old_w, new_addr, hi, lo;
@@ -182,7 +182,7 @@ novl_reloc_mips_lo16 ( uint32_t * i, uint32_t address, int type, int offset, int
     if(dryrun) return NOVL_RELOC_SUCCESS;
     
     /* Relocate it */
-    new_addr = hilopair_regs[reg] + offset;
+    new_addr = hilopair_regs[reg] + ptrvalchange;
     
     /* Cut it up */
     lo = new_addr & 0xFFFF;
@@ -226,7 +226,7 @@ novlDoReloc novl_reloc_jt[R_MIPS_NUM] =
    
 /* Do a relocation */
 int
-novl_reloc_do ( uint32_t * i, uint32_t address, int type, int offset, int dryrun )
+novl_reloc_do ( uint32_t * i, int type, int ptrvalchange, int dryrun )
 {
     novlDoReloc handler;
     
@@ -241,7 +241,7 @@ novl_reloc_do ( uint32_t * i, uint32_t address, int type, int offset, int dryrun
     }
     
     /* Call it */
-    return handler( i, address, type, offset, dryrun );
+    return handler( i, type, ptrvalchange, dryrun );
 }
 
 /* Generate a Nintendo relocation */

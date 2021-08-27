@@ -47,28 +47,16 @@
 static FILE      * ovl_out;
 static uint32_t    elf_ep;
 static uint8_t     memory[4 * 1024 * 1024];
-static uint32_t    starts[OVL_S_COUNT];
-uint32_t           orig_starts[OVL_S_COUNT];
+uint32_t           elf_starts[OVL_S_COUNT];
 uint32_t           sizes[OVL_S_COUNT];
+static uint32_t    ovl_starts[OVL_S_COUNT];
 static int         elf_fd;
 static Elf       * elf;
 static GElf_Ehdr   elf_head;
-static int         offset;
+static int         change_entry_point_offset;
 
-
-static struct 
-{
-    char * marker;
-    uint32_t * start;
-    uint32_t * size;
-}
-spec[] =
-{
-    { ".text",   &starts[OVL_S_TEXT],   &sizes[OVL_S_TEXT]   },
-    { ".data",   &starts[OVL_S_DATA],   &sizes[OVL_S_DATA]   },
-    { ".rodata", &starts[OVL_S_RODATA], &sizes[OVL_S_RODATA] },
-    { ".bss",    &starts[OVL_S_BSS],    &sizes[OVL_S_BSS]    },
-    { NULL }
+static const char section_names[OVL_S_COUNT] = {
+    ".text", ".data", ".rodata", ".bss"
 };
 
 
@@ -81,9 +69,9 @@ valid_sec ( char * s )
 {
     int i;
     
-    for( i = 0; spec[i].marker; i++ )
+    for( i = 0; i < OVL_S_COUNT; i++ )
     {
-        if( !strncmp(s, spec[i].marker, strlen(spec[i].marker) - 1) )
+        if( !strncmp(s, section_names[i], strlen(section_names[i])) )
             return i;
     }
     
@@ -115,7 +103,7 @@ novl_conv ( char * in, char * out )
     uint32_t tmp;
     uint32_t greatest;
     uint32_t backwards;
-    uint32_t real_end_addr;
+    uint32_t ovl_end_addr, ovl_file_header_addr;
     
     ninty_relocs = NULL;
     ninty_count_pred = 0;
@@ -161,7 +149,7 @@ novl_conv ( char * in, char * out )
         exit( EXIT_FAILURE );
     }
     
-    /* CHeck machine arch */
+    /* Check machine arch */
     if( elf_head.e_machine != EM_MIPS )
     {
         ERROR(
@@ -170,9 +158,9 @@ novl_conv ( char * in, char * out )
         exit( EXIT_FAILURE );
     }
     
-    /* Set entry point and offset */
+    /* Set entry point and how much we're moving the entry point (address of start of code) */
     elf_ep = elf_head.e_entry;
-    offset = settings.base_addr - elf_ep;
+    change_entry_point_offset = settings.base_addr - elf_ep;
     
     /* Notice */
     MESG( "\"%s\": valid MIPS ELF file.", in );
@@ -193,6 +181,11 @@ novl_conv ( char * in, char * out )
     ** Start loading the file into memory
     **
     */
+    
+    for(i=0; i<OVL_S_COUNT; ++i){
+        elf_starts[i] = 0;
+        sizes[i] = 0;
+    }
     
     /* Set up */
     elf_getshdrstrndx( elf, &sh_strcount );
@@ -217,27 +210,16 @@ novl_conv ( char * in, char * out )
         }
         
         /* Set the start addr & size */
-        if( !*spec[id].start )
-            *spec[id].start = sh_header.sh_addr;
-        if( sh_header.sh_size % 8 )
-            *spec[id].size += (sh_header.sh_size - (sh_header.sh_size % 8) + 8);
-        else
-            *spec[id].size += sh_header.sh_size;
-        
-        /* Check that .text is at the entry point */
-        if( id == OVL_S_TEXT && starts[OVL_S_TEXT] != elf_ep )
-        {
-            ERROR( "The entry point is NOT equal to the start of the .text section." );
-            ERROR( "EP: 0x%08X  .text: 0x%08X", elf_ep, starts[OVL_S_TEXT] );
-            ERROR( "Ensure that the entry point function is linked in at the beginning." );
-            
+        if(elf_starts[id] != 0){
+            ERROR("Multiple %s sections defined", name);
             exit( EXIT_FAILURE );
         }
+        elf_starts[id] = sh_header.sh_addr;
+        sizes[id] = (sh_header.sh_size + 7) & ~7;
         
         /* Can we load this into memory? */
         if( sh_header.sh_type == SHT_PROGBITS )
         {
-            int n;
             
             /* Keep tabs on last boundry */
             if( sh_header.sh_size + sh_header.sh_addr > greatest )
@@ -246,11 +228,12 @@ novl_conv ( char * in, char * out )
             data = NULL;
             
             /* Sanity check... */
-            if( (sh_header.sh_addr + sh_header.sh_size) - elf_ep > sizeof(memory) )
+            if( elf_ep > sh_header.sh_addr || (sh_header.sh_addr + sh_header.sh_size) - elf_ep > sizeof(memory) )
             {
                 ERROR( 
-                  "Error - memory bounds reached. Check ELF entry point vs .text "
-                  "start address."
+                  "Error - memory bounds reached. Entry point must be before, but not too far before, "
+                  "all valid sections (.text, .data, .rodata, .bss), usually at the start of .text.\n"
+                  "EP: 0x%08X  %s: 0x%08X size 0x%08X", elf_ep, name, sh_header.sh_addr, sh_header.sh_size
                 );
                 exit( EXIT_FAILURE );
             }
@@ -261,15 +244,17 @@ novl_conv ( char * in, char * out )
                 memcpy( memory + (sh_header.sh_addr - elf_ep), data->d_buf, data->d_size );
             }
             
-            /**/ DEBUG( "Copied '%s' (%i bytes) to 0x%08X.", name, (int)sh_header.sh_size, (int)sh_header.sh_addr );
+            DEBUG( "Copied '%s' (0x%X bytes) to 0x%08X.", name, (int)sh_header.sh_size, (int)sh_header.sh_addr );
         }
     }
     
-    /* Backup original starts; starts will be modified later. */
+    #ifdef NOVL_DEBUG
+    DEBUG("ELF input addresses:");
     for(i=0; i<OVL_S_COUNT; ++i)
     {
-        orig_starts[i] = starts[i];
+        DEBUG("%s: 0x%08X size 0x%X", section_names[i], elf_starts[i], sizes[i]);
     }
+    #endif
     
     /* predict size of resulting overlay (.bss starts after overlay in vram) */
     elf_getshdrstrndx( elf, &sh_strcount );
@@ -313,7 +298,7 @@ novl_conv ( char * in, char * out )
                 off = (uint32_t)rel.r_offset - elf_ep;
                 
                 /* Dry run of relocating */
-                v = novl_reloc_do( (uint32_t*)(&memory[off]), (int)rel.r_offset, (int)rel.r_info, offset, 1 );
+                v = novl_reloc_do( (uint32_t*)(&memory[off]), (int)rel.r_info, 0, 1 );
                 
                 /* Check result */
                 if( !v )
@@ -340,27 +325,32 @@ novl_conv ( char * in, char * out )
             }
         }
     }
-    real_end_addr = elf_ep; /* entry point */
-    starts[OVL_S_TEXT] = real_end_addr;
-    real_end_addr += sizes[OVL_S_TEXT]; /* section sizes */
-    starts[OVL_S_DATA] = real_end_addr;
-    real_end_addr += sizes[OVL_S_DATA];
-    starts[OVL_S_RODATA] = real_end_addr;
-    real_end_addr += sizes[OVL_S_RODATA];
-    real_end_addr += 5 * sizeof(uint32_t); /* header size */
-    real_end_addr += ninty_count_pred * sizeof(uint32_t); /* relocation block size */
-    real_end_addr += 4; /* space for footer */
-    real_end_addr = (real_end_addr + 15) & ~15; /* 16 byte alignment */
-    starts[OVL_S_BSS] = real_end_addr;
-    real_end_addr += sizes[OVL_S_BSS]; /* real_end_addr = end of overlay in vram */
-    DEBUG("Overlay (pre-offset) end addr: %08X", real_end_addr);
     
-    /* Sections should've loaded now */
+    /* Compute overlay (output) addresses */
+    
+    ovl_end_addr = settings.base_addr; /* elf_ep + change_entry_point_offset */
+    ovl_starts[OVL_S_TEXT] = ovl_end_addr;
+    ovl_end_addr += sizes[OVL_S_TEXT]; /* section sizes */
+    ovl_starts[OVL_S_DATA] = ovl_end_addr;
+    ovl_end_addr += sizes[OVL_S_DATA];
+    ovl_starts[OVL_S_RODATA] = ovl_end_addr;
+    ovl_end_addr += sizes[OVL_S_RODATA];
+    ovl_file_header_addr = ovl_end_addr - settings.base_addr;
+    ovl_end_addr += 5 * sizeof(uint32_t); /* header size */
+    ovl_end_addr += ninty_count_pred * sizeof(uint32_t); /* relocation block size */
+    ovl_end_addr += 4; /* space for footer */
+    ovl_end_addr = (ovl_end_addr + 15) & ~15; /* 16 byte alignment */
+    ovl_starts[OVL_S_BSS] = ovl_end_addr;
+    ovl_end_addr += sizes[OVL_S_BSS]; /* ovl_end_addr = end of overlay in vram */
+    
     #ifdef NOVL_DEBUG
-     for( i = 0; i < OVL_S_COUNT; i++ )
-     {
-         DEBUG( " %-8s 0x%08X %ib", spec[i].marker, *spec[i].start, *spec[i].size );
-     }
+    DEBUG("Section reloc info:")
+    DEBUG(" section   ELF addr   OVL addr  size");
+    for( i = 0; i < OVL_S_COUNT; i++ )
+    {
+        DEBUG(" %-8s 0x%08X 0x%08X %4X", section_names[i], elf_starts[i], ovl_starts[i], sizes[i]);
+    }
+    DEBUG("Overlay end addr: %08X", ovl_end_addr);
     #endif
     
     /*
@@ -413,7 +403,8 @@ novl_conv ( char * in, char * out )
                 off = (uint32_t)rel.r_offset - elf_ep;
                 
                 /* Relocate! */
-                v = novl_reloc_do( (uint32_t*)(&memory[off]), (int)rel.r_offset, (int)rel.r_info, offset, 0 );
+                v = novl_reloc_do( (uint32_t*)(&memory[off]), (int)rel.r_info, 
+                    ovl_starts[id] - elf_starts[id], 0 );
                 
                 /* Check result */
                 if( !v )
@@ -447,7 +438,7 @@ novl_conv ( char * in, char * out )
                 }
                 
                 /* Generate a nintendo relocation */
-                nr = novl_reloc_mk(id + 1, (int)rel.r_offset - starts[id], (int)rel.r_info);
+                nr = novl_reloc_mk(id + 1, (int)rel.r_offset - ovl_starts[id], (int)rel.r_info);
                 ninty_relocs = g_list_append( ninty_relocs, GUINT_TO_POINTER(nr) );
                 ninty_count_real++;
                 
@@ -479,14 +470,6 @@ novl_conv ( char * in, char * out )
      Now all we have to do is generate the header and write the data to disk
     */
     
-    /* Get last address */
-    greatest = 0;
-    for( i = OVL_S_BSS - 1; i >= 0; i-- )
-    {
-        if( greatest < starts[i] + sizes[i] )
-          greatest = starts[i] + sizes[i];
-    }
-    
     /* Copy sizes */
     memcpy( new_head.sizes, sizes, sizeof(new_head.sizes) );
     new_head.relocation_count = ninty_count_real;
@@ -496,9 +479,8 @@ novl_conv ( char * in, char * out )
         ((uint32_t*)&new_head)[i] = g_htonl(((uint32_t*)&new_head)[i]);
     
     /* Write it */
-    header_offset = greatest - elf_ep;
-    DEBUG( "Head offset: 0x%X", header_offset );
-    fseek( ovl_out, header_offset, SEEK_SET );
+    DEBUG( "Header offset: 0x%X", ovl_file_header_addr );
+    fseek( ovl_out, ovl_file_header_addr, SEEK_SET );
     v = fwrite( &new_head, 1, sizeof(new_head), ovl_out );
     MESG( "Wrote section descriptions (%ib).", v );
     
@@ -515,7 +497,7 @@ novl_conv ( char * in, char * out )
     MESG( "Wrote relocation entries (%ib).", v );
     
     /* Write offset from here to header */
-    backwards = ftell(ovl_out) - header_offset + 4;
+    backwards = ftell(ovl_out) - ovl_file_header_addr + 4;
     
     /* Check alignment */
     if( ((i = ftell(ovl_out)) + 4) % 16 )
@@ -538,12 +520,12 @@ novl_conv ( char * in, char * out )
     /* the size of the resulting overlay should be what
      * we predicted to be the start of the .bss section
      */
-    if (starts[OVL_S_BSS] != ftell(ovl_out) + elf_ep)
+    if (ovl_starts[OVL_S_BSS] != ftell(ovl_out) + settings.base_addr)
     {
         ERROR(
             "Relocation prediction failed! .bss address predicted as %08X, is actually %08X"
-            , starts[OVL_S_BSS]
-            , ftell(ovl_out) + elf_ep
+            , ovl_starts[OVL_S_BSS]
+            , ftell(ovl_out) + settings.base_addr
         );
         fclose(ovl_out);
         remove(out);
@@ -554,8 +536,24 @@ novl_conv ( char * in, char * out )
     fseek( ovl_out, 0, SEEK_SET );
     for( i = 0; i < OVL_S_BSS; i++ )
     {
-        v = fwrite( memory + (starts[i] - elf_ep), 1, sizes[i], ovl_out );
-        MESG( "Wrote section %s (%ib).", spec[i].marker, v );
+        if(ovl_starts[i] != ftell(ovl_out) + settings.base_addr)
+        {
+            ERROR("Internal error with arranging sections! %s should be at 0x%08X but is actually 0x%08X"
+                , section_names[i], ovl_starts[i], ftell(ovl_out) + settings.base_addr);
+            fclose(ovl_out);
+            remove(out);
+            exit( EXIT_FAILURE );
+        }
+        v = fwrite( memory + (elf_starts[i] - elf_ep), 1, sizes[i], ovl_out );
+        MESG( "Wrote section %s (%ib).", section_names[i], v );
+    }
+    if(ovl_file_header_addr != ftell(ovl_out))
+    {
+        ERROR("Internal error with arranging sections! header should be at 0x%08X but is actually 0x%08X"
+            , section_names[i], ovl_file_header_addr, ftell(ovl_out));
+        fclose(ovl_out);
+        remove(out);
+        exit( EXIT_FAILURE );
     }
     fclose( ovl_out );
     
