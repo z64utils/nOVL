@@ -55,7 +55,7 @@ static Elf       * elf;
 static GElf_Ehdr   elf_head;
 static int         change_entry_point_offset;
 
-static const char section_names[OVL_S_COUNT] = {
+static const char * section_names[OVL_S_COUNT] = {
     ".text", ".data", ".rodata", ".bss"
 };
 
@@ -344,7 +344,7 @@ novl_conv ( char * in, char * out )
     ovl_end_addr += sizes[OVL_S_BSS]; /* ovl_end_addr = end of overlay in vram */
     
     #ifdef NOVL_DEBUG
-    DEBUG("Section reloc info:")
+    DEBUG("Section reloc info:");
     DEBUG(" section   ELF addr   OVL addr  size");
     for( i = 0; i < OVL_S_COUNT; i++ )
     {

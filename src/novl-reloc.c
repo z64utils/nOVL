@@ -21,7 +21,7 @@
 #include "novl.h"
 #include "overlay.h"
 
-extern uint32_t orig_starts[OVL_S_COUNT];
+extern uint32_t elf_starts[OVL_S_COUNT];
 extern uint32_t sizes[OVL_S_COUNT];
 
 /* ----------------------------------------------
