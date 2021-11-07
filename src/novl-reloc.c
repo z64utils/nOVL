@@ -137,7 +137,6 @@ novl_reloc_mips_26 ( uint32_t * i, int dryrun )
 static int
 novl_reloc_mips_hi16 ( uint32_t * i, int dryrun )
 {
-    const int type = 5;
     uint32_t w;
     int reg;
     
