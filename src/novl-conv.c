@@ -92,7 +92,6 @@ novl_conv ( char * in, char * out )
     size_t sh_strcount;
     GElf_Rel rel;
     GList * seek;
-    uint32_t header_offset;
     struct ovl_header_t new_head;
     GList * ninty_relocs, * last;
     int ninty_count_pred, ninty_count_real;
