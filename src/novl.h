@@ -49,6 +49,7 @@
 /* Relocation return values */
 #define NOVL_RELOC_FAIL     2
 #define NOVL_RELOC_SUCCESS  3
+#define NOVL_RELOC_FAIL_DONTDELETEHI 4
 
 
 #include "mesg.h"
@@ -108,6 +109,7 @@ extern uint32_t novl_reloc_mk ( int, int, int );
 /* Relocation functions */
 extern int novl_reloc_do ( uint32_t *, int, int );
 
+extern void novl_reloc_init ();
    
 
 #endif /* __NOVL_H__ */

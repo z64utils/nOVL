@@ -102,11 +102,15 @@ novl_conv ( char * in, char * out )
     uint32_t greatest;
     uint32_t backwards;
     uint32_t ovl_end_addr, ovl_file_header_addr;
+    uint8_t error;
+    int nreloc;
+    GElf_Rel *rel_list;
     
     ninty_relocs = NULL;
     ninty_count_pred = 0;
     v = 0;
     greatest = 0;
+    error = 0;
     
     /* Open the ELF file for reading */
     if( (elf_fd = open(in, O_RDONLY | O_BINARY, 0)) < 0 )
@@ -285,11 +289,33 @@ novl_conv ( char * in, char * out )
         /* Get section data */
         for( n = 0; n < sh_header.sh_size && (data = elf_getdata(section, data)); n += data->d_size )
         {
+            
+            novl_reloc_init();
+        
+            /* Relocs may not be in order! Need to count them, then sort them. */
+            for( nreloc = 0; gelf_getrel(data, nreloc, &rel); nreloc++ );
+            
+            rel_list = malloc(nreloc * sizeof(GElf_Rel));
+            
+            for( nreloc = 0; gelf_getrel(data, nreloc, &rel); nreloc++ )
+            {
+                for( i = nreloc - 1; i >= 0; --i )
+                {
+                    if( rel.r_offset > rel_list[i].r_offset ) break;
+                    
+                    rel_list[i+1] = rel_list[i];
+                }
+                ++i;
+                rel_list[i] = rel;
+                
+            }
+        
             /* Get relocations */
-            for( i = 0; gelf_getrel(data, i, &rel); i++ )
+            for( i = 0; i < nreloc; i++ )
             {
                 uint32_t off;
                 int v;
+                rel = rel_list[i];
                 
                 /* Calculate offset */
                 off = (uint32_t)rel.r_offset - elf_ep;
@@ -301,17 +327,17 @@ novl_conv ( char * in, char * out )
                 if( !v )
                 {
                     /* Whaat? */
-                    ERROR( "Relocation type %s has no registered handler. Abort.", novl_str_reloc((int)rel.r_info) );
-                    DEBUG( "%i,%i", (int)rel.r_offset, (int)rel.r_info );
-                    exit( EXIT_FAILURE );
+                    ERROR( "Error processing relocation of type %s. Abort.", novl_str_reloc((int)rel.r_info) );
+                    DEBUG( "%08X,%i", (int)rel.r_offset, (int)rel.r_info );
+                    error = 1;
                 }
                 
                 /* Skip relocation generation? */
-                if( v == NOVL_RELOC_FAIL )
+                if( v == NOVL_RELOC_FAIL || v == NOVL_RELOC_FAIL_DONTDELETEHI)
                 {
                     /* We may also have to remove the first half of a HI16/LO16
                        reloc */
-                    if( (int)rel.r_info == R_MIPS_LO16 )
+                    if( (int)rel.r_info == R_MIPS_LO16 && v != NOVL_RELOC_FAIL_DONTDELETEHI)
                     {
                         ninty_count_pred--;
                     }
@@ -320,7 +346,14 @@ novl_conv ( char * in, char * out )
                 
                 ninty_count_pred++;
             }
+            
+            free(rel_list);
         }
+    }
+    
+    if(error)
+    {
+        exit( EXIT_FAILURE );
     }
     
     /* Compute overlay (output) addresses */
@@ -390,11 +423,33 @@ novl_conv ( char * in, char * out )
         /* Get section data */
         for( n = 0; n < sh_header.sh_size && (data = elf_getdata(section, data)); n += data->d_size )
         {
+            
+            novl_reloc_init();
+        
+            /* Relocs may not be in order! Need to count them, then sort them. */
+            for( nreloc = 0; gelf_getrel(data, nreloc, &rel); nreloc++ );
+            
+            rel_list = malloc(nreloc * sizeof(GElf_Rel));
+            
+            for( nreloc = 0; gelf_getrel(data, nreloc, &rel); nreloc++ )
+            {
+                for( i = nreloc - 1; i >= 0; --i )
+                {
+                    if( rel.r_offset > rel_list[i].r_offset ) break;
+                    
+                    rel_list[i+1] = rel_list[i];
+                }
+                ++i;
+                rel_list[i] = rel;
+                
+            }
+        
             /* Get relocations */
-            for( i = 0; gelf_getrel(data, i, &rel); i++ )
+            for( i = 0; i < nreloc; i++ )
             {
                 uint32_t off, nr;
                 int v;
+                rel = rel_list[i];
                 
                 /* Calculate offset */
                 off = (uint32_t)rel.r_offset - elf_ep;
@@ -406,17 +461,17 @@ novl_conv ( char * in, char * out )
                 if( !v )
                 {
                     /* Whaat? */
-                    ERROR( "Relocation type %s has no registered handler. Abort.", novl_str_reloc((int)rel.r_info) );
-                    DEBUG( "%i,%i", (int)rel.r_offset, (int)rel.r_info );
+                    ERROR( "Error processing relocation of type %s. Abort.", novl_str_reloc((int)rel.r_info) );
+                    DEBUG( "%08X,%i", (int)rel.r_offset, (int)rel.r_info );
                     exit( EXIT_FAILURE );
                 }
                 
                 /* Skip relocation generation? */
-                if( v == NOVL_RELOC_FAIL )
+                if( v == NOVL_RELOC_FAIL || v == NOVL_RELOC_FAIL_DONTDELETEHI)
                 {
                     /* We may also have to remove the first half of a HI16/LO16
                        reloc */
-                    if( (int)rel.r_info == R_MIPS_LO16 )
+                    if( (int)rel.r_info == R_MIPS_LO16 && v != NOVL_RELOC_FAIL_DONTDELETEHI)
                     {
                         GList * n;
                         
@@ -448,6 +503,8 @@ novl_conv ( char * in, char * out )
                     last = last->next;
                 }
             }
+            
+            free(rel_list);
         }
     }
     

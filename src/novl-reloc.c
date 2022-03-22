@@ -40,7 +40,11 @@ extern const char * section_names[OVL_S_COUNT];
 /* Temporary storage for building HI16/LO16 instructions */
 static uint32_t * hilopair_ptrs[32];
 static uint32_t hilopair_regs[32];
+static uint8_t hilopair_status[32];
 
+#define HILO_STATUS_INVALID 0
+#define HILO_STATUS_VALID 1
+#define HILO_STATUS_USED 2
 
 /* ----------------------------------------------
    Local functions
@@ -152,6 +156,11 @@ novl_reloc_mips_hi16 ( uint32_t * i, int dryrun )
     /* Store pointer to this current instruction */
     hilopair_ptrs[reg] = i;
     
+    /* Mark as in use */
+    hilopair_status[reg] = HILO_STATUS_VALID;
+    
+    //DEBUG_R( "R_MIPS_HI16: reg %d %08X", reg, hilopair_regs[reg]);
+    
     return NOVL_RELOC_SUCCESS;
 }
 
@@ -174,13 +183,32 @@ novl_reloc_mips_lo16 ( uint32_t * i, int dryrun )
     /* Get the immediate value */
     val = (int16_t)(w & 0xFFFF);
     
+    /* Check status */
+    if(hilopair_status[reg] == HILO_STATUS_INVALID)
+    {
+        ERROR("Instruction %08X uses low immediate value relative to reg %d, but not previously set!",
+            w, reg);
+        return FALSE;
+    }
+    
     /* Finish building the value */
     addr = hilopair_regs[reg] + val;
     
-    /* Apply offset */
-    if((ret = adjust_address(&addr, type, dryrun)) != NOVL_RELOC_SUCCESS) return ret;
+    if(hilopair_status[reg] == HILO_STATUS_USED)
+    {
+        DEBUG_R("    Hi reg %d previously used", reg);
+    }
     
-    if(!dryrun)
+    /* Apply offset */
+    if((ret = adjust_address(&addr, type, dryrun)) != NOVL_RELOC_SUCCESS)
+    {
+        if(ret == NOVL_RELOC_FAIL && hilopair_status[reg] == HILO_STATUS_USED)
+        {
+            ret = NOVL_RELOC_FAIL_DONTDELETEHI;
+        }
+        
+    }
+    else if(!dryrun)
     {
         /* Cut it up */
         lo = addr & 0xFFFF;
@@ -194,7 +222,8 @@ novl_reloc_mips_lo16 ( uint32_t * i, int dryrun )
         *hilopair_ptrs[reg] = g_htonl( (old_w & 0xFFFF0000) | hi );
     }
     
-    return NOVL_RELOC_SUCCESS;
+    hilopair_status[reg] = HILO_STATUS_USED;
+    return ret;
 }
 
 
@@ -252,4 +281,14 @@ novl_reloc_mk ( int sec, int offset, int type )
     w |= (type & 0x3F) << 24;
     
     return w;
+}
+
+void
+novl_reloc_init ()
+{
+    for(int i=0; i<32; ++i){
+        hilopair_ptrs[i] = NULL;
+        hilopair_regs[i] = 0;
+        hilopair_status[i] = HILO_STATUS_INVALID;
+    }
 }
