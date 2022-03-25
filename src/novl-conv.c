@@ -35,6 +35,7 @@
 #include "novl.h"
 #include "overlay.h"
 #include "mesg.h"
+#include "novl-mips.h"
 
 #ifndef O_BINARY
 #define O_BINARY 0
@@ -58,6 +59,9 @@ const char * section_names[OVL_S_COUNT] = {
     ".text", ".data", ".rodata", ".bss"
 };
 
+#define NOVL_MAX_RELOCS 100000
+static novl_reloc_entry relocs[NOVL_MAX_RELOCS];
+static int nrelocs;
 
 /* ----------------------------------------------
    Local functions 
@@ -77,6 +81,237 @@ valid_sec ( char * s )
     return -1;
 }
 
+/* Generate a Nintendo relocation */
+uint32_t
+novl_reloc_mk ( int sec, int offset, int type )
+{
+    uint32_t w;
+    
+    w = sec << 30;
+    w |= offset & 0x00FFFFFF;
+    w |= (type & 0x3F) << 24;
+    
+    return w;
+}
+
+void novl_parse_hilo16 ( uint32_t textaddr, uint32_t textsize, int startrelocnum );
+
+void
+elf_to_novl_relocs ( )
+{
+    /* Converts relocs from ELF format to nOVL format, and extracts the
+    tgt_addr for each reloc from the instructions (or data). */
+    size_t sh_strcount;
+    Elf_Scn * section;
+    int i;
+    
+    nrelocs = 0;
+    
+    /* Step through section list */
+    elf_getshdrstrndx( elf, &sh_strcount );
+    section = NULL;
+    
+    while( (section = elf_nextscn(elf, section)) )
+    {
+        int id, n;
+        GElf_Shdr sh_header;
+        char * name;
+        Elf_Data * data;
+        
+        /* Get the header */
+        gelf_getshdr( section, &sh_header );
+        
+        /* Get name */
+        name = elf_strptr( elf, sh_strcount, sh_header.sh_name );
+        
+        /* Relocation header? */
+        if( strncmp(".rel.", name, 4) )
+            continue;
+        
+        /* Is this one we want? */
+        if( (id = valid_sec(name+4)) == -1 )
+        {
+            /* No */
+            continue;
+        }
+        
+        /* We want this */
+        DEBUG( "Processing relocation entries from '%s'", name) ;
+        
+        data = NULL;
+        
+        /* Get section data */
+        for( n = 0; n < sh_header.sh_size && (data = elf_getdata(section, data)); n += data->d_size )
+        {
+            GElf_Rel *rel_list;
+            GElf_Rel rel;
+            int nr;
+            int startrelocnum = nrelocs;
+            
+            /* Relocs may not be in order! Need to count them, then sort them. */
+            for( nr = 0; gelf_getrel(data, nr, &rel); nr++ );
+            
+            DEBUG( "%d relocs", nr);
+            
+            rel_list = malloc(nr * sizeof(GElf_Rel));
+            
+            for( nr = 0; gelf_getrel(data, nr, &rel); nr++ )
+            {
+                for( i = nr - 1; i >= 0; --i )
+                {
+                    if( rel.r_offset > rel_list[i].r_offset ) break;
+                    
+                    rel_list[i+1] = rel_list[i];
+                }
+                ++i;
+                rel_list[i] = rel;
+                
+            }
+            
+            for( i = 0; i < nr; ++i, ++nrelocs)
+            {
+                uint32_t elf_addr = (uint32_t)rel_list[i].r_offset;
+                uint32_t contents = g_ntohl(*(uint32_t*)&memory[elf_addr - elf_ep]);
+                
+                /* Check reloc type */
+                uint8_t type = (int)rel_list[i].r_info;
+                if( id == 0 && 
+                    !(type == R_MIPS_HI16 || type == R_MIPS_LO16 || type == R_MIPS_26)
+                    || id != 0 && type != R_MIPS_32 )
+                {
+                    ERROR( "Unsupported relocation in ELF file of type %s in section %s",
+                        novl_str_reloc(type), section_names[id] );
+                    exit(EXIT_FAILURE);
+                }
+                
+                /* Write to list */
+                relocs[nrelocs].elf_addr = elf_addr;
+                relocs[nrelocs].type = type;
+                relocs[nrelocs].elf_sec = id;
+                
+                /* If this is an easy type, just read the address */
+                if(type == R_MIPS_26)
+                {
+                    relocs[nrelocs].tgt_addr = ((contents & 0x03FFFFFF) << 2) | 0x80000000;
+                }
+                else if(type == R_MIPS_32)
+                {
+                    relocs[nrelocs].tgt_addr = contents;
+                }
+                else
+                {
+                    relocs[nrelocs].tgt_addr = 0xFFFFFFFF;
+                }
+            }
+            
+            free(rel_list);
+            
+            if(id == 0)
+            {
+                novl_parse_hilo16(sh_header.sh_addr, sh_header.sh_size, startrelocnum);
+            }
+        }
+    }        
+}
+
+void
+novl_parse_hilo16 ( uint32_t textaddr, uint32_t textsize, int startrelocnum )
+{
+    /*
+    For .text section, iterate through all instructions in order. We need to
+    actually follow the code execution because branches can carry over which
+    register contains what value. For example:
+    lui v0, %hi(A)      ; v0 set to A
+    beq t1, zero, lbl1
+    nop
+    lw  t2, %lo(A)(v0)  ; v0 used (A)
+    sw  t3, 0x0000(t2)
+    lui v0, %hi(B)      ; v0 set to B
+    sw  zero, %lo(B)(v0) ; v0 used (B)
+    beq zero, zero, lbl2
+    nop
+    lbl1:
+    lw  t2, %lo(A)(v0)  ; v0 used (A), but "last" set to B!
+    If A is relocatable (in the overlay) but B is not or vice versa, this will
+    corrupt one of the addresses!
+    */
+    
+    int r;
+    uint32_t a;
+    int branchdelay_mode = 0;
+    int is_branch_likely = 0;
+    uint32_t branch_offset;
+    
+    DEBUG("Parsing code for HI16/LO16 addresses");
+    novl_mips_clearall();
+    
+    for( r = startrelocnum, a = textaddr; 
+        a < textaddr + textsize && r < nrelocs;
+        a += 4)
+    {
+        novl_mips_checkmerge(a);
+        
+        uint32_t instr = g_ntohl(*(uint32_t*)&memory[a - elf_ep]);
+        if(relocs[r].elf_addr == a)
+        {
+            if(relocs[r].type == R_MIPS_HI16)
+            {
+                if(is_branch_likely)
+                {
+                    ERROR("@%08X instr %08X has HI16 reloc in branch likely delay slot, not yet supported!",
+                        a, instr);
+                    exit(EXIT_FAILURE);
+                }
+                
+                novl_mips_got_hi16(a, instr, &relocs[r]);
+            }
+            else if(relocs[r].type == R_MIPS_LO16)
+            {
+                novl_mips_got_lo16(a, instr, &relocs[r]);
+            }
+            ++r;
+        }
+        
+        if(branchdelay_mode == 1)
+        {
+            /* Forward branch */
+            novl_mips_futurestate(a + 4 + branch_offset);
+        }
+        else if(branchdelay_mode == 2)
+        {
+            /* Other jump: backward branch, j, jr $ra only, jal, jalr */
+            novl_mips_clearstate();
+        }
+        else if(branchdelay_mode == 3)
+        {
+            /* jr (not jr $ra) */
+            novl_mips_jr();
+        }
+        branchdelay_mode = 0;
+        
+        if( novl_mips_is_forward_branch(instr) )
+        {
+            branchdelay_mode = 1;
+            branch_offset = instr & 0xFFFF;
+        }
+        else if( novl_mips_is_jump(instr) )
+        {
+            branchdelay_mode = 2;
+        }
+        else if( novl_mips_is_jr(instr) )
+        {
+            branchdelay_mode = 3;
+        }
+        is_branch_likely = novl_mips_is_branch_likely(instr);
+    }
+    
+    if(r < nrelocs)
+    {
+        ERROR("Internal error, ran out of .text before finishing all hi/lo relocs!");
+        exit(EXIT_FAILURE);
+    }
+}
+
 
 /* ----------------------------------------------
    Global functions 
@@ -90,27 +325,16 @@ novl_conv ( char * in, char * out )
     Elf_Scn * section;
     GElf_Shdr sh_header;
     size_t sh_strcount;
-    GElf_Rel rel;
-    GList * seek;
-    struct ovl_header_t new_head;
-    GList * ninty_relocs, * last;
-    int ninty_count_pred, ninty_count_real;
     char * name;
     Elf_Data * data;
-    int i, n, v;
+    
+    struct ovl_header_t new_head;
+    int ninty_count;
+    int i, n, r, v;
     uint32_t tmp;
     uint32_t greatest;
     uint32_t backwards;
     uint32_t ovl_end_addr, ovl_file_header_addr;
-    uint8_t error;
-    int nreloc;
-    GElf_Rel *rel_list;
-    
-    ninty_relocs = NULL;
-    ninty_count_pred = 0;
-    v = 0;
-    greatest = 0;
-    error = 0;
     
     /* Open the ELF file for reading */
     if( (elf_fd = open(in, O_RDONLY | O_BINARY, 0)) < 0 )
@@ -191,6 +415,7 @@ novl_conv ( char * in, char * out )
     /* Set up */
     elf_getshdrstrndx( elf, &sh_strcount );
     section = NULL;
+    greatest = 0;
     
     /* Loop through sections; find loadable ones */
     while( (section = elf_nextscn(elf, section)) )
@@ -257,104 +482,34 @@ novl_conv ( char * in, char * out )
     }
     #endif
     
-    /* predict size of resulting overlay (.bss starts after overlay in vram) */
-    elf_getshdrstrndx( elf, &sh_strcount );
-    section = NULL;
-    while( (section = elf_nextscn(elf, section)) )
-    {
-        int id;
-        
-        /* Get the header */
-        gelf_getshdr( section, &sh_header );
-        
-        /* Get name */
-        name = elf_strptr( elf, sh_strcount, sh_header.sh_name );
-        
-        /* Relocation header? */
-        if( strncmp(".rel.", name, 4) )
-            continue;
-        
-        /* Is this one we want? */
-        if( (id = valid_sec(name+4)) == -1 )
-        {
-            /* No */
-            continue;
-        }
-        
-        /* We want this */
-        DEBUG( "Counting relocation entries from '%s'.", name ) ;
-        
-        data = NULL;
-        
-        /* Get section data */
-        for( n = 0; n < sh_header.sh_size && (data = elf_getdata(section, data)); n += data->d_size )
-        {
-            
-            novl_reloc_init();
-        
-            /* Relocs may not be in order! Need to count them, then sort them. */
-            for( nreloc = 0; gelf_getrel(data, nreloc, &rel); nreloc++ );
-            
-            rel_list = malloc(nreloc * sizeof(GElf_Rel));
-            
-            for( nreloc = 0; gelf_getrel(data, nreloc, &rel); nreloc++ )
-            {
-                for( i = nreloc - 1; i >= 0; --i )
-                {
-                    if( rel.r_offset > rel_list[i].r_offset ) break;
-                    
-                    rel_list[i+1] = rel_list[i];
-                }
-                ++i;
-                rel_list[i] = rel;
-                
-            }
-        
-            /* Get relocations */
-            for( i = 0; i < nreloc; i++ )
-            {
-                uint32_t off;
-                int v;
-                rel = rel_list[i];
-                
-                /* Calculate offset */
-                off = (uint32_t)rel.r_offset - elf_ep;
-                
-                /* Dry run of relocating */
-                v = novl_reloc_do( (uint32_t*)(&memory[off]), (int)rel.r_info, 1 );
-                
-                /* Check result */
-                if( !v )
-                {
-                    /* Whaat? */
-                    ERROR( "Error processing relocation of type %s. Abort.", novl_str_reloc((int)rel.r_info) );
-                    DEBUG( "%08X,%i", (int)rel.r_offset, (int)rel.r_info );
-                    error = 1;
-                }
-                
-                /* Skip relocation generation? */
-                if( v == NOVL_RELOC_FAIL || v == NOVL_RELOC_FAIL_DONTDELETEHI)
-                {
-                    /* We may also have to remove the first half of a HI16/LO16
-                       reloc */
-                    if( (int)rel.r_info == R_MIPS_LO16 && v != NOVL_RELOC_FAIL_DONTDELETEHI)
-                    {
-                        ninty_count_pred--;
-                    }
-                    continue;
-                }
-                
-                ninty_count_pred++;
-            }
-            
-            free(rel_list);
-        }
-    }
+    /* Load relocs into memory, and extract target addresses from code/data */
+    elf_to_novl_relocs();
     
-    if(error)
+    /* Sort relocs into sections */
+    DEBUG("Sorting relocs into sections");
+    ninty_count = 0;
+    
+    for(r = 0; r < nrelocs; ++r)
     {
-        exit( EXIT_FAILURE );
+        novl_reloc_entry * rel = &relocs[r];
+        for(i = 0; i < OVL_S_COUNT; ++i)
+        {
+            if(rel->tgt_addr >= elf_starts[i] && rel->tgt_addr < elf_starts[i] + sizes[i])
+            {
+                DEBUG("Reloc at %08X to %08X type %s is to section %s",
+                    rel->elf_addr, rel->tgt_addr, novl_str_reloc(rel->type), section_names[i]);
+                ++ninty_count;
+                break;
+            }
+        }
+        if(i == OVL_S_COUNT)
+        {
+            DEBUG("Reloc at %08X to %08X type %s is to outside the overlay, discarding",
+                rel->elf_addr, rel->tgt_addr, novl_str_reloc(rel->type));
+            rel->elf_sec = -1;
+        }
     }
+    DEBUG("ninty_count = %d", ninty_count);
     
     /* Compute overlay (output) addresses */
     
@@ -367,7 +522,7 @@ novl_conv ( char * in, char * out )
     ovl_end_addr += sizes[OVL_S_RODATA];
     ovl_file_header_addr = ovl_end_addr - settings.base_addr;
     ovl_end_addr += 5 * sizeof(uint32_t); /* header size */
-    ovl_end_addr += ninty_count_pred * sizeof(uint32_t); /* relocation block size */
+    ovl_end_addr += ninty_count * sizeof(uint32_t); /* relocation block size */
     ovl_end_addr += 4; /* space for footer */
     ovl_end_addr = (ovl_end_addr + 15) & ~15; /* 16 byte alignment */
     ovl_starts[OVL_S_BSS] = ovl_end_addr;
@@ -383,149 +538,9 @@ novl_conv ( char * in, char * out )
     DEBUG("Overlay end addr: %08X", ovl_end_addr);
     #endif
     
-    /*
-    **
-    ** Relocate the file
-    **
-    */
-    
-    /* Step through section list once more */
-    elf_getshdrstrndx( elf, &sh_strcount );
-    section = NULL;
-    ninty_count_real = 0;
-    while( (section = elf_nextscn(elf, section)) )
-    {
-        int id;
-        
-        /* Get the header */
-        gelf_getshdr( section, &sh_header );
-        
-        /* Get name */
-        name = elf_strptr( elf, sh_strcount, sh_header.sh_name );
-        
-        /* Relocation header? */
-        if( strncmp(".rel.", name, 4) )
-            continue;
-        
-        /* Is this one we want? */
-        if( (id = valid_sec(name+4)) == -1 )
-        {
-            /* No */
-            continue;
-        }
-        
-        /* We want this */
-        DEBUG( "Processing relocation entries from '%s'", name) ;
-        
-        data = NULL;
-        last = NULL;
-        
-        /* Get section data */
-        for( n = 0; n < sh_header.sh_size && (data = elf_getdata(section, data)); n += data->d_size )
-        {
-            
-            novl_reloc_init();
-        
-            /* Relocs may not be in order! Need to count them, then sort them. */
-            for( nreloc = 0; gelf_getrel(data, nreloc, &rel); nreloc++ );
-            
-            rel_list = malloc(nreloc * sizeof(GElf_Rel));
-            
-            for( nreloc = 0; gelf_getrel(data, nreloc, &rel); nreloc++ )
-            {
-                for( i = nreloc - 1; i >= 0; --i )
-                {
-                    if( rel.r_offset > rel_list[i].r_offset ) break;
-                    
-                    rel_list[i+1] = rel_list[i];
-                }
-                ++i;
-                rel_list[i] = rel;
-                
-            }
-        
-            /* Get relocations */
-            for( i = 0; i < nreloc; i++ )
-            {
-                uint32_t off, nr;
-                int v;
-                rel = rel_list[i];
-                
-                /* Calculate offset */
-                off = (uint32_t)rel.r_offset - elf_ep;
-                
-                /* Relocate! */
-                v = novl_reloc_do( (uint32_t*)(&memory[off]), (int)rel.r_info, 0 );
-                
-                /* Check result */
-                if( !v )
-                {
-                    /* Whaat? */
-                    ERROR( "Error processing relocation of type %s. Abort.", novl_str_reloc((int)rel.r_info) );
-                    DEBUG( "%08X,%i", (int)rel.r_offset, (int)rel.r_info );
-                    exit( EXIT_FAILURE );
-                }
-                
-                /* Skip relocation generation? */
-                if( v == NOVL_RELOC_FAIL || v == NOVL_RELOC_FAIL_DONTDELETEHI)
-                {
-                    /* We may also have to remove the first half of a HI16/LO16
-                       reloc */
-                    if( (int)rel.r_info == R_MIPS_LO16 && v != NOVL_RELOC_FAIL_DONTDELETEHI)
-                    {
-                        GList * n;
-                        
-                        /* Yep */
-                        n = last;
-                        
-                        /* Seek last back one */
-                        last = last->prev;
-                        
-                        /* Remove node */
-                        ninty_relocs = g_list_delete_link( ninty_relocs, n );
-                        ninty_count_real--;
-                    }
-                    continue;
-                }
-                
-                /* Generate a nintendo relocation */
-                nr = novl_reloc_mk(id + 1, (int)rel.r_offset - elf_starts[id], (int)rel.r_info);
-                ninty_relocs = g_list_append( ninty_relocs, GUINT_TO_POINTER(nr) );
-                ninty_count_real++;
-                
-                /* Set last link node */
-                if( !last )
-                {
-                    last = g_list_last( ninty_relocs );
-                }
-                else
-                {
-                    last = last->next;
-                }
-            }
-            
-            free(rel_list);
-        }
-    }
-    
-    if(ninty_count_pred != ninty_count_real)
-    {
-        ERROR("Relocation prediction failed! ninty_count_pred = %d, ninty_count_real = %d"
-            , ninty_count_pred, ninty_count_real);
-        fclose(ovl_out);
-        remove(out);
-        exit( EXIT_FAILURE );
-    }
-    
-    /*
-     Okay! So at this point, the binary has been relocated, and the Nintendo-
-     friendly relocation entries generated.
-     Now all we have to do is generate the header and write the data to disk
-    */
-    
     /* Copy sizes */
     memcpy( new_head.sizes, sizes, sizeof(new_head.sizes) );
-    new_head.relocation_count = ninty_count_real;
+    new_head.relocation_count = ninty_count;
     
     /* Swap... */
     for( i = 0; i < sizeof(new_head)/4; i++ )
@@ -538,15 +553,24 @@ novl_conv ( char * in, char * out )
     MESG( "Wrote section descriptions (%ib).", v );
     
     /* Write the relocation entries */
-    for( seek = ninty_relocs, v = 0; seek && seek->data; seek = seek->next )
+    i = 0;
+    for( r = 0; r < nrelocs; ++r )
     {
-        uint32_t w;
-            
-        w = GPOINTER_TO_UINT(seek->data);
-        w = g_htonl( w );
+        int8_t id = relocs[r].elf_sec;
+        if(id < 0) continue;
         
+        uint32_t w = novl_reloc_mk(id + 1, relocs[r].elf_addr - elf_starts[id], relocs[r].type);
+        w = g_htonl( w );
         v += fwrite( &w, 1, sizeof(w), ovl_out );
+        
+        ++i;
     }
+    if(i != ninty_count)
+    {
+        ERROR("Inconsistent number of valid relocations! %d vs %d", i, ninty_count);
+        exit(EXIT_FAILURE);
+    }
+    
     MESG( "Wrote relocation entries (%ib).", v );
     
     /* Write offset from here to header */
@@ -609,9 +633,6 @@ novl_conv ( char * in, char * out )
         exit( EXIT_FAILURE );
     }
     fclose( ovl_out );
-    
-    /* Free up some memory */
-    g_list_free( ninty_relocs );
     
     /* Done with elf file */
     elf_end( elf );

@@ -88,6 +88,14 @@ struct novl_settings_t
     uint8_t flags[UCHAR_MAX + 1];
 };
 
+typedef struct
+{
+    uint32_t elf_addr; /* Address of the instruction etc. to be patched */
+    uint32_t tgt_addr; /* Address encoded in the instruction etc. */
+    uint8_t type; /* R_MIPS_32, R_MIPS_26, R_MIPS_HI16, R_MIPS_LO16 */
+    int8_t elf_sec; /* Section (0-3) elf_addr is within; set to -1 if tgt_addr 
+        is outside overlay */
+} novl_reloc_entry;
 
 /* ----------------------------------------------
    Variable declarations
