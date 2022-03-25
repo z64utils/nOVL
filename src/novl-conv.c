@@ -94,7 +94,7 @@ novl_reloc_mk ( int sec, int offset, int type )
     return w;
 }
 
-void novl_parse_hilo16 ( uint32_t textaddr, uint32_t textsize, int startrelocnum );
+void novl_parse_hilo16 ( int startrelocnum );
 
 void
 elf_to_novl_relocs ( )
@@ -136,7 +136,7 @@ elf_to_novl_relocs ( )
         }
         
         /* We want this */
-        DEBUG( "Processing relocation entries from '%s'", name) ;
+        DEBUG( "Processing relocation entries from '%s' @%08X", name);
         
         data = NULL;
         
@@ -208,14 +208,14 @@ elf_to_novl_relocs ( )
             
             if(id == 0)
             {
-                novl_parse_hilo16(sh_header.sh_addr, sh_header.sh_size, startrelocnum);
+                novl_parse_hilo16(startrelocnum);
             }
         }
     }        
 }
 
 void
-novl_parse_hilo16 ( uint32_t textaddr, uint32_t textsize, int startrelocnum )
+novl_parse_hilo16 ( int startrelocnum )
 {
     /*
     For .text section, iterate through all instructions in order. We need to
@@ -245,8 +245,8 @@ novl_parse_hilo16 ( uint32_t textaddr, uint32_t textsize, int startrelocnum )
     DEBUG("Parsing code for HI16/LO16 addresses");
     novl_mips_clearall();
     
-    for( r = startrelocnum, a = textaddr; 
-        a < textaddr + textsize && r < nrelocs;
+    for( r = startrelocnum, a = elf_starts[0]; 
+        a < elf_starts[0] + sizes[0] && r < nrelocs;
         a += 4)
     {
         novl_mips_checkmerge(a);
@@ -292,7 +292,7 @@ novl_parse_hilo16 ( uint32_t textaddr, uint32_t textsize, int startrelocnum )
         if( novl_mips_is_forward_branch(instr) )
         {
             branchdelay_mode = 1;
-            branch_offset = instr & 0xFFFF;
+            branch_offset = (instr & 0xFFFF) << 2;
         }
         else if( novl_mips_is_jump(instr) )
         {

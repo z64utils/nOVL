@@ -132,7 +132,7 @@ novl_mips_got_hi16 ( uint32_t a, uint32_t instr, novl_reloc_entry * reloc )
 void
 novl_mips_got_lo16 ( uint32_t a, uint32_t instr, novl_reloc_entry * reloc )
 {
-    int r = (instr >> 16) & 0x1F;
+    int r = (instr >> 21) & 0x1F;
     int16_t imm = instr & 0xFFFF;
     uint8_t status = cur_state.r[r].status;
     if(status == REG_UNSET)
@@ -204,7 +204,14 @@ novl_mips_futurestate ( uint32_t a )
     memcpy(last, &cur_state, sizeof(exec_state));
     last->next = NULL;
     last->a = a;
-    s->next = last;
+    if(s == NULL)
+    {
+        future_states = last;
+    }
+    else
+    {
+        s->next = last;
+    }
 }
 
 void
